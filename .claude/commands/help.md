@@ -19,11 +19,19 @@ Print the following exactly:
 | `/lint` | `/lint` | Run ruff (lint + format) and mypy --strict in parallel subagents. Offers auto-fix for ruff |
 | `/test` | `/test [unit\|integration\|all]` | Run pytest. Integration tests deploy real infra — prompts before running. Default: `unit` |
 
+### Built-in skills (global, no .md file needed)
+
+| Skill | Usage | Description |
+|-------|-------|-------------|
+| `/simplify` | `/simplify` | Review staged infra code for over-engineering. Run before `/commit` when `.py` files are staged |
+| `/loop` | `/loop <interval> <command>` | Repeat a command on an interval. E.g. `/loop 2m /preview staging` |
+| `/update-config` | `/update-config` | Configure Claude Code hooks or permissions |
+
 ### Tips
 - `/preview` before every `/deploy`
 - Stack argument is required for `/preview` and `/deploy` — no default assumed
 - `/deploy prod` requires explicit confirmation
-- `/new-component` fetches live Pulumi docs via Context7 MCP automatically
+- Run `/simplify` before `/commit` when Python files are staged
 - `/test integration` will incur real cloud costs — use sparingly
 
 ---
