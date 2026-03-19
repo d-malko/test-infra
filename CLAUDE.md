@@ -11,10 +11,19 @@ Infrastructure-as-Code repository using **Pulumi (Python)** for the p2bid projec
 
 Apply the following skills automatically based on context, without waiting for the user to ask:
 
+### Pulumi skills
 - **`pulumi-best-practices`** — whenever writing, editing, or reviewing any `.py` file inside `infra/`.
 - **`pulumi-component`** — whenever creating or modifying any file inside `infra/components/`.
 - **`pulumi-esc`** — whenever working with `Pulumi.*.yaml` stack configs, secrets, credentials, or OIDC setup.
 - **`pulumi-automation-api`** — whenever writing deployment scripts, CI/CD pipelines, or any code that imports `pulumi.automation`.
+
+### DevOps & Security skills
+- **`senior-devops`** — whenever discussing CI/CD pipelines, stack deployments, PR workflows, or environment isolation.
+- **`senior-secops`** — whenever touching secrets, IAM, RBAC, policy-as-code, or any security-sensitive resource.
+- **`devops-verification-before-completion`** — always apply before claiming any task is done, fixed, or ready to merge. Run verification commands first, assert after.
+- **`devops-systematic-debugging`** — whenever encountering a bug, unexpected `pulumi preview` output, or test failure. Never guess — trace root cause first.
+- **`devops-requesting-code-review`** — whenever completing a feature or before merging a branch.
+- **`devops-finishing-branch`** — whenever implementation is complete and it's time to decide on merge, PR, or cleanup.
 
 ## MCP Servers
 - **context7** — Use for up-to-date Pulumi/cloud provider docs. Always resolve library IDs before querying.
@@ -72,10 +81,25 @@ common_tags = {
 ## Stacks
 - Two stacks only: `staging` and `prod`
 - Never default to `prod` — always require explicit confirmation
-- Run `pulumi preview --diff` before every `pulumi up`
-- Use `pulumi refresh` when state may be stale
 
 ## Code Quality
-- Protect stateful resources: `ResourceOptions(protect=True)` for databases and storage
 - Never use `--replace` or `--target` without explicit user confirmation
-- Use `import_` in `ResourceOptions` to adopt existing resources without recreation
+
+## Subagents
+
+Always use subagents for tasks that involve reading or analysing multiple files. This repo will grow — design for scale now.
+
+**Use an Explore subagent when:**
+- Auditing or reviewing infra code across multiple modules (e.g. "check all files in `infra/` against pulumi-best-practices")
+- Searching for patterns across the codebase (e.g. hardcoded secrets, missing tags, wrong naming)
+- Answering questions about the overall architecture or code structure
+
+**Use parallel subagents when:**
+- Running independent checks simultaneously (e.g. lint + security audit + best-practices review at the same time)
+- Analysing multiple infra modules that don't depend on each other
+- Running unit tests per module in parallel
+
+**Do NOT use subagents when:**
+- Reading 1–3 specific known files
+- Making targeted edits to existing files
+- The result of one step is needed as input for the next
