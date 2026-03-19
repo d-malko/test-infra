@@ -3,6 +3,7 @@
 Infrastructure-as-Code for the **p2bid** project, written in [Pulumi](https://www.pulumi.com/) (Python).
 
 > Want to understand *why* each command, skill, and subagent pattern is set up this way? See [CLAUDE-SETUP.md](CLAUDE-SETUP.md).
+> Migrating from existing infrastructure? See [MIGRATION-PLAN.md](MIGRATION-PLAN.md).
 
 ---
 
