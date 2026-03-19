@@ -117,6 +117,30 @@ Configured in [.mcp.json](.mcp.json) — available automatically in Claude Code.
 
 ---
 
+## One-time Global Setup (per developer machine)
+
+The repo ships with project-level config (`.claude/`), but each developer must add one hook
+to their **global** `~/.claude/settings.json` so Claude always knows the current date:
+
+```json
+// ~/.claude/settings.json  — add inside "hooks": {}
+"UserPromptSubmit": [
+  {
+    "hooks": [
+      {
+        "type": "command",
+        "command": "echo \"{\\\"additionalSystemPrompt\\\": \\\"Current date: $(date +%Y-%m-%d). Day of week: $(date +%A).\\\"}\"",
+        "timeout": 5
+      }
+    ]
+  }
+]
+```
+
+Without this hook Claude uses its training cutoff date (August 2025) instead of today's date.
+
+---
+
 ## Secrets
 
 - Never commit plaintext secrets
