@@ -7,7 +7,7 @@ Migrate p2bid infrastructure from ad-hoc YAML/Talos configs to a fully GitOps-dr
 | Layer | Tool | Responsibility |
 |-------|------|----------------|
 | Cluster bootstrap | **Pulumi** (Python) | Talos config generation, apply, bootstrap, kubeconfig |
-| Secrets | **Pulumi ESC** + **SOPS/age** | Cluster PKI in ESC, workload secrets encrypted in Git |
+| Secrets | **GCP Secret Manager** + **SOPS/age** | Cluster PKI in Secret Manager, workload secrets encrypted in Git |
 | Workloads | **Flux v2** | All Kubernetes resources: operators, Helm releases, apps |
 | Progressive delivery | **Flagger** | Canary/blue-green for stateless custom apps (future) |
 
@@ -19,8 +19,8 @@ Migrate p2bid infrastructure from ad-hoc YAML/Talos configs to a fully GitOps-dr
 
 | Issue | Fix |
 |-------|-----|
-| Cluster PKI keys in Git plaintext | Move to Pulumi ESC; rotate all certs/tokens |
-| `kubeconfig` / `talosconfig` in Git | Remove from repo; store in ESC; add to `.gitignore` |
+| Cluster PKI keys in Git plaintext | Move to GCP Secret Manager; rotate all certs/tokens |
+| `kubeconfig` / `talosconfig` in Git | Remove from repo; store in GCP Secret Manager; add to `.gitignore` |
 | PostgreSQL `51.195.15.0:5432` public | Remove LoadBalancer; internal-only via ClusterIP |
 | Kubernetes API `51.195.61.13:6443` public | Firewall to known IPs only (CI/CD, VPN, developer IPs) |
 | GitLab SSH `:22` public | Keep but rate-limit; consider VPN-only or non-standard port |
@@ -109,23 +109,65 @@ Flux owns (everything after):
 
 ## Secrets Strategy
 
-### Cluster-level secrets → Pulumi ESC
+No Pulumi Cloud required — everything self-hosted on GCP.
+
+| Component | Solution |
+|-----------|----------|
+| Pulumi state | GCS bucket (`gs://p2bid-pulumi-state`) |
+| Stack secret encryption | GCP KMS key |
+| Cluster-level secrets | GCP Secret Manager |
+| Workload secrets (Flux) | SOPS + age |
+
+### Pulumi backend — GCS + KMS
+
+```bash
+# Login to GCS backend (no Pulumi Cloud needed)
+pulumi login gs://p2bid-pulumi-state
+
+# Init stack with GCP KMS encryption
+pulumi stack init prod \
+  --secrets-provider="gcpkms://projects/p2bid/locations/global/keyRings/pulumi/cryptoKeys/stack"
+```
+
+```yaml
+# pulumi/Pulumi.yaml
+backend:
+  url: gs://p2bid-pulumi-state
+```
+
+### Cluster-level secrets → GCP Secret Manager
 
 ```
-ESC Environment: p2bid/prod
-  ├── talos.secrets       # machine token, cluster ID, cluster secret
-  ├── talos.pki           # all CA/server/client keys (NOT in Git)
-  ├── talos.kubeconfig    # admin kubeconfig (output after bootstrap)
-  └── talos.talosconfig   # talosconfig (output after bootstrap)
+GCP Secret Manager: project p2bid
+  ├── talos-bootstrap-token     # machine bootstrap token
+  ├── talos-cluster-secret      # cluster shared secret
+  ├── talos-cluster-id          # cluster ID
+  ├── talos-pki-*               # all CA/server/client keys (NOT in Git)
+  ├── kubeconfig                # admin kubeconfig (written after bootstrap)
+  └── age-private-key           # SOPS age private key for Flux
 ```
 
-Pulumi reads from ESC at deploy time. Nothing sensitive touches Git.
+```python
+# pulumi/infra/secrets.py
+import pulumi_gcp as gcp
+
+def get_secret(name: str) -> pulumi.Output[str]:
+    secret = gcp.secretmanager.get_secret_version(
+        secret=name,
+        project="p2bid",
+    )
+    return secret.secret_data
+
+talos_token = get_secret("talos-bootstrap-token")
+```
+
+Pulumi reads from Secret Manager at deploy time. Nothing sensitive touches Git.
 
 ### Workload secrets → SOPS + age
 
 ```bash
 # One-time setup
-age-keygen -o prod.key              # keep private key in ESC / secure vault
+age-keygen -o prod.key              # store private key in GCP Secret Manager
 # public key goes in .sops.yaml
 
 # Encrypt a secret file
@@ -152,8 +194,10 @@ Encrypted files are safe to commit. Flux decrypts in-cluster using the private a
 - [ ] Rotate ALL cluster secrets (bootstrap tokens, PKI certs, encryption keys)
 - [ ] Remove `kubeconfig`, `talosconfig`, `controlplane.yaml` from Git history (`git filter-repo`)
 - [ ] Add to `.gitignore`: `*.kubeconfig`, `talosconfig`, `*-patched.yaml`
-- [ ] Set up Pulumi ESC environment, store rotated secrets there
-- [ ] Generate age key, store private key in ESC, add public key to `.sops.yaml`
+- [ ] Create GCS bucket for Pulumi state (`gs://p2bid-pulumi-state`)
+- [ ] Create GCP KMS key ring for Pulumi stack encryption
+- [ ] Store rotated secrets in GCP Secret Manager
+- [ ] Generate age key, store private key in GCP Secret Manager, add public key to `.sops.yaml`
 - [ ] Firewall `6443` and `50000` to known IPs only
 
 ### Phase 1 — Pulumi: Talos bootstrap
@@ -162,11 +206,16 @@ Encrypted files are safe to commit. Flux decrypts in-cluster using the private a
 # pulumi/infra/talos.py
 
 import pulumi
+import pulumi_gcp as gcp
 from pulumi_talos import machine, cluster
 
 config = pulumi.Config()
 
-# Secrets from ESC (never hardcoded)
+def get_secret(name: str) -> pulumi.Output[str]:
+    v = gcp.secretmanager.get_secret_version_output(secret=name, project="p2bid")
+    return v.secret_data
+
+# Secrets from GCP Secret Manager (never hardcoded)
 secrets = machine.Secrets("cluster-secrets")
 
 # Generate controlplane config
@@ -200,6 +249,12 @@ kubeconfig = cluster.Kubeconfig("kubeconfig",
     opts=pulumi.ResourceOptions(depends_on=[bootstrap]),
 )
 pulumi.export("kubeconfig", kubeconfig.kubeconfig_raw)
+
+# Save kubeconfig back to Secret Manager
+gcp.secretmanager.SecretVersion("kubeconfig-version",
+    secret="kubeconfig",
+    secret_data=kubeconfig.kubeconfig_raw,
+)
 ```
 
 ### Phase 2 — Flux bootstrap via Pulumi
@@ -338,8 +393,8 @@ Install Flagger via Flux `HelmRelease` when first custom app is ready.
 | Before | After |
 |--------|-------|
 | YAML files applied manually | Flux reconciles from Git automatically |
-| Secrets in Git plaintext | Secrets in Pulumi ESC or SOPS-encrypted |
-| Talos configs hand-crafted | Generated by Pulumi from ESC secrets |
+| Secrets in Git plaintext | Secrets in GCP Secret Manager or SOPS-encrypted |
+| Talos configs hand-crafted | Generated by Pulumi, secrets from GCP Secret Manager |
 | No resource limits on DBs | Limits defined in Flux manifests |
 | PostgreSQL exposed publicly | Internal ClusterIP only |
 | No NetworkPolicies | Namespace isolation via Flux |
@@ -352,8 +407,12 @@ Install Flagger via Flux `HelmRelease` when first custom app is ready.
 ## Tools Required
 
 ```bash
-# Pulumi
-pip install pulumi pulumi-talos pulumi-kubernetes pulumi-flux
+# Pulumi + GCP provider
+pip install pulumi pulumi-talos pulumi-kubernetes pulumi-flux pulumi-gcp
+
+# GCP CLI (for Secret Manager and GCS)
+gcloud auth application-default login
+gcloud config set project p2bid
 
 # Flux CLI
 curl -s https://fluxcd.io/install.sh | sudo bash
