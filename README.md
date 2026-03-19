@@ -4,36 +4,49 @@ Infrastructure-as-Code for the **p2bid** project, written in [Pulumi](https://ww
 
 ---
 
-## New here? Run `/setup`
+## Getting Started
 
-If you just cloned this repo, open it in Claude Code and run `/setup` — it will check all required tools, install dependencies, authenticate with Pulumi, and verify your cloud credentials automatically.
+### Using Claude Code (recommended)
+
+Open the repo in Claude Code and run:
+
+```
+/setup
+```
+
+That's it — `/setup` checks all required tools, installs dependencies, authenticates with Pulumi, selects a stack, and verifies cloud credentials.
 
 ---
 
-## Prerequisites
+### Manual setup
 
-- Python 3.12+
-- [Poetry](https://python-poetry.org/) — dependency management
-- [Pulumi CLI](https://www.pulumi.com/docs/install/) — `curl -fsSL https://get.pulumi.com | sh`
-- Cloud provider CLI configured (e.g. `aws configure`)
+**1. Install required tools**
 
-## Getting Started
+| Tool | Version | Install |
+|------|---------|---------|
+| Python | 3.12+ | [python.org](https://www.python.org/downloads/) or `pyenv install 3.12` |
+| Poetry | any | `curl -sSL https://install.python-poetry.org \| python3 -` |
+| Pulumi CLI | any | `curl -fsSL https://get.pulumi.com \| sh` |
+| Cloud CLI | — | `aws configure` / `gcloud auth` / `az login` |
+
+**2. Install Python dependencies**
 
 ```bash
-# Install dependencies
 poetry install
-
-# Activate virtual environment
 poetry shell
+```
 
-# Select a stack
-pulumi stack select staging
+**3. Authenticate with Pulumi**
 
-# Preview changes
+```bash
+pulumi login
+```
+
+**4. Select a stack and verify**
+
+```bash
+pulumi stack select staging   # or prod
 pulumi preview --diff
-
-# Deploy
-pulumi up
 ```
 
 ---
@@ -79,10 +92,10 @@ This repo ships local Claude Code commands in [.claude/commands/](.claude/comman
 |---------|-------------|
 | `/setup` | Bootstrap a freshly cloned repo — checks required tools, installs Python deps, logs into Pulumi, selects a stack, and verifies cloud credentials |
 | `/commit` | Commit staged changes with IaC-aware [Conventional Commits](https://www.conventionalcommits.org/) (`feat(infra):`, `fix(infra):`, etc.) |
-| `/preview [stack]` | Run `pulumi preview --diff` for a stack and summarise planned changes. Warns explicitly on deletes and replacements. Default stack: `dev`. |
-| `/deploy [stack]` | Run `pulumi up` for a stack. Runs preview first. Requires explicit typed confirmation for `prod`. Default stack: `dev`. |
+| `/preview <stack>` | Run `pulumi preview --diff` for a stack and summarise planned changes. Warns explicitly on deletes and replacements. Stacks: `staging`, `prod`. |
+| `/deploy <stack>` | Run `pulumi up` for a stack. Runs preview first. Requires explicit typed confirmation for `prod`. Stacks: `staging`, `prod`. |
 | `/new-component <Name>` | Scaffold a typed `ComponentResource` in `infra/components/`, fetching current Pulumi docs via Context7 MCP. |
-| `/new-stack <name>` | Create a new Pulumi stack, copy config from `dev` as baseline, and set mandatory vars. |
+| `/new-stack <name>` | Create a new Pulumi stack, copy config from `staging` as baseline, and set mandatory vars. |
 | `/lint` | Run `ruff` (lint + format check) and `mypy --strict` over the codebase. Offers auto-fix for ruff. |
 | `/test [unit\|integration\|all]` | Run pytest. Unit tests are fast and mocked. Integration tests deploy real cloud resources — prompts for confirmation first. |
 
