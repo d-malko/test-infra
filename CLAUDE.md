@@ -3,6 +3,10 @@
 ## Project Overview
 Infrastructure-as-Code repository using **Pulumi (Python)** for the p2bid project.
 
+## General Rules
+- Never add `Co-Authored-By: Claude` or any AI authorship trailer to git commits.
+- Before committing any infrastructure code changes, run `/simplify` to review for reuse, quality, and efficiency.
+
 ## MCP Servers
 - **context7** — Use for up-to-date Pulumi/cloud provider docs. Always resolve library IDs before querying.
 - **playwright** — Use for verifying deployed endpoints, scraping cloud console pages, or browser-based validation.
