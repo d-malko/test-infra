@@ -7,6 +7,18 @@ Infrastructure-as-Code repository using **Pulumi (Python)** for the p2bid projec
 - Never add `Co-Authored-By: Claude` or any AI authorship trailer to git commits.
 - Before committing any infrastructure code changes, run `/simplify` to review for reuse, quality, and efficiency.
 
+## Skills — Automatic Activation
+
+Apply the following skills automatically based on context, without waiting for the user to ask:
+
+- **`pulumi-best-practices`** — activate whenever writing, editing, or reviewing any `.py` file inside `infra/`. Enforce Output composition rules, dependency tracking, secrets handling, and safe refactoring patterns on every change.
+
+- **`pulumi-component`** — activate whenever creating or modifying any file inside `infra/components/`. Enforce correct type string format, `register_outputs()` usage, `ResourceOptions(parent=self)` on all child resources, and typed `Args` classes.
+
+- **`pulumi-esc`** — activate whenever working with `Pulumi.*.yaml` stack config files, secrets, credentials, OIDC setup, or any code that references `config.require_secret()` or external secret stores.
+
+- **`pulumi-automation-api`** — activate whenever writing deployment scripts, CI/CD pipelines, or any Python code that imports `pulumi.automation` or orchestrates stack operations programmatically.
+
 ## MCP Servers
 - **context7** — Use for up-to-date Pulumi/cloud provider docs. Always resolve library IDs before querying.
 - **playwright** — Use for verifying deployed endpoints, scraping cloud console pages, or browser-based validation.

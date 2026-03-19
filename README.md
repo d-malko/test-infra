@@ -101,17 +101,71 @@ This repo ships local Claude Code commands in [.claude/commands/](.claude/comman
 
 ---
 
-## Claude Code Built-in Skills
+## Claude Code Skills
 
-These are global Claude Code skills — available automatically, no installation needed.
+### Project Skills (installed in this repo)
 
-| Skill | How to invoke | When to use |
-|-------|--------------|-------------|
-| `simplify` | `/simplify` | After writing or changing Python infra code — reviews for reuse, quality, and efficiency. Run before `/commit`. |
-| `loop` | `/loop <interval> <command>` | Monitor a long-running deploy or poll stack outputs repeatedly. E.g. `/loop 2m /preview staging` |
-| `update-config` | `/update-config` | Configure Claude Code hooks, permissions, or env vars for this project |
+Official Pulumi skills from [pulumi/agent-skills](https://github.com/pulumi/agent-skills), located in [.claude/skills/](.claude/skills/). Committed to the repo — no extra installation needed after cloning.
 
-> Skills are part of Claude Code itself and cannot be bundled into the repository.
+---
+
+#### `pulumi-best-practices`
+**Why use it:** Pulumi has subtle correctness traps that aren't obvious — creating resources inside `apply()` breaks previews, bypassing Output composition breaks dependency tracking, and renaming resources without aliases causes accidental deletions. This skill makes Claude aware of all these pitfalls so generated code is production-safe, not just syntactically correct.
+
+**When to invoke:** When writing new resources, reviewing existing infra code, debugging unexpected replacements or deletions, or refactoring module structure.
+
+```
+"Review this file using pulumi-best-practices"
+"Write an S3 bucket with versioning — follow pulumi-best-practices"
+```
+
+---
+
+#### `pulumi-component`
+**Why use it:** `ComponentResource` has strict rules: wrong type strings break the resource graph, missing `register_outputs()` hides outputs from stack references, and improper `ResourceOptions(parent=self)` breaks destroy ordering. This skill encodes the exact patterns needed to build reusable, distributable components correctly.
+
+**When to invoke:** When creating a new component in `infra/components/`, designing a component interface, or packaging components for reuse across projects.
+
+```
+"Scaffold a new RDS component using pulumi-component"
+"Review my WebService component using pulumi-component"
+```
+
+---
+
+#### `pulumi-esc`
+**Why use it:** Hardcoded secrets and per-stack config duplication are the most common IaC security mistakes. Pulumi ESC solves both — centralized secrets, OIDC-based short-lived credentials, and layered environment composition. This skill teaches Claude how ESC works so it can generate correct ESC configs, set up OIDC for AWS/GCP/Azure, and integrate with external secret stores (Secrets Manager, Vault, 1Password).
+
+**When to invoke:** When setting up secrets for a new stack, configuring cloud credentials for CI/CD, or migrating from hardcoded config values.
+
+```
+"Set up OIDC for AWS using pulumi-esc"
+"Create an ESC environment for staging secrets using pulumi-esc"
+```
+
+---
+
+#### `pulumi-automation-api`
+**Why use it:** The Automation API lets you orchestrate Pulumi programmatically — deploy stacks in order, build self-service portals, or run infrastructure operations from CI/CD without the CLI. It's powerful but has non-obvious patterns around workspace lifecycle, stack initialization, and error handling. This skill ensures Claude generates correct, production-ready Automation API code.
+
+**When to invoke:** When writing CI/CD deploy scripts, building multi-stack orchestration, or embedding Pulumi operations into a Python application.
+
+```
+"Write a deployment script for staging → prod rollout using pulumi-automation-api"
+"Build a stack health check script using pulumi-automation-api"
+```
+
+---
+
+### Built-in Skills
+
+Global Claude Code skills — available automatically in any project, no installation needed.
+
+| Skill | Invoke | Why use it |
+|-------|--------|------------|
+| `simplify` | `/simplify` | Catches over-engineered infra code — premature abstractions, duplicated resource blocks, unnecessary wrappers. Run before `/commit` to keep code lean. |
+| `loop` | `/loop <interval> <command>` | Useful during long deploys to poll stack state or outputs automatically. E.g. `/loop 2m /preview staging` |
+| `update-config` | `/update-config` | Add Claude Code hooks or permissions specific to this project without editing JSON manually |
 
 ---
 
