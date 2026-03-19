@@ -49,8 +49,10 @@ p2bid-infra/
 │   ├── Pulumi.staging.yaml
 │   ├── __main__.py
 │   └── infra/
-│       ├── talos.py                 # Talos secrets, config, apply, bootstrap
-│       └── flux.py                  # Flux bootstrap (via pulumi-kubernetes)
+│       ├── talos.py                 # TalosCluster ComponentResource
+│       ├── flux.py                  # Flux bootstrap (via pulumi-kubernetes)
+│       └── components/
+│           └── talos_cluster.py     # Reusable ComponentResource
 │
 ├── flux/                            # Flux — everything running on the cluster
 │   ├── clusters/
@@ -68,9 +70,12 @@ p2bid-infra/
 │   │   └── network-policies/        # NetworkPolicy per namespace
 │   │
 │   └── apps/                        # Application workloads
-│       ├── databases/               # CNPG clusters (dev-pg, gitlab-pg) + backups
+│       ├── databases/               # CNPG clusters (gitlab-pg) + backups
 │       ├── gitlab/                  # GitLab Helm release
 │       └── gitlab-runner/           # GitLab Runner Helm release
+│
+├── ci/
+│   └── deploy.py                    # Automation API orchestrator (staging → prod)
 │
 ├── .sops.yaml                       # SOPS encryption rules (age keys)
 ├── CLAUDE.md
@@ -85,10 +90,10 @@ p2bid-infra/
 
 ```
 Pulumi owns:
-  ├── Talos machine config (generated from secrets in ESC)
+  ├── Talos machine config (generated from secrets in GCP Secret Manager)
   ├── Talos apply → node
   ├── Talos bootstrap → cluster
-  ├── kubeconfig → stored in Pulumi ESC output
+  ├── kubeconfig → stored in GCP Secret Manager output
   └── Flux bootstrap (installs Flux controllers + GitRepository CR)
 
 Flux owns (everything after):
@@ -115,8 +120,9 @@ No Pulumi Cloud required — everything self-hosted on GCP.
 |-----------|----------|
 | Pulumi state | GCS bucket (`gs://p2bid-pulumi-state`) |
 | Stack secret encryption | GCP KMS key |
-| Cluster-level secrets | GCP Secret Manager |
+| Cluster-level secrets | GCP Secret Manager (separate per environment) |
 | Workload secrets (Flux) | SOPS + age |
+| CI/CD credentials | Workload Identity Federation (OIDC) — no static keys |
 
 ### Pulumi backend — GCS + KMS
 
@@ -135,45 +141,32 @@ backend:
   url: gs://p2bid-pulumi-state
 ```
 
-### Cluster-level secrets → GCP Secret Manager
+### Cluster-level secrets → GCP Secret Manager (per environment)
 
 ```
 GCP Secret Manager: project p2bid
-  ├── talos-bootstrap-token     # machine bootstrap token
-  ├── talos-cluster-secret      # cluster shared secret
-  ├── talos-cluster-id          # cluster ID
-  ├── talos-pki-*               # all CA/server/client keys (NOT in Git)
-  ├── kubeconfig                # admin kubeconfig (written after bootstrap)
-  └── age-private-key           # SOPS age private key for Flux
+  ├── prod/talos-bootstrap-token    # machine bootstrap token (prod)
+  ├── prod/talos-cluster-secret     # cluster shared secret (prod)
+  ├── prod/talos-pki-*              # all CA/server/client keys — NOT in Git
+  ├── prod/kubeconfig               # admin kubeconfig (written after bootstrap)
+  ├── prod/age-private-key          # SOPS age private key for Flux (prod)
+  ├── staging/talos-bootstrap-token # staging equivalents (separate secrets)
+  ├── staging/talos-cluster-secret
+  └── staging/age-private-key
 ```
 
-```python
-# pulumi/infra/secrets.py
-import pulumi_gcp as gcp
-
-def get_secret(name: str) -> pulumi.Output[str]:
-    secret = gcp.secretmanager.get_secret_version(
-        secret=name,
-        project="p2bid",
-    )
-    return secret.secret_data
-
-talos_token = get_secret("talos-bootstrap-token")
-```
-
-Pulumi reads from Secret Manager at deploy time. Nothing sensitive touches Git.
+Secrets are namespaced per environment (`prod/`, `staging/`) — a compromised staging
+credential cannot access prod secrets.
 
 ### Workload secrets → SOPS + age
 
 ```bash
 # One-time setup
-age-keygen -o prod.key              # store private key in GCP Secret Manager
+age-keygen -o prod.key              # store private key in GCP Secret Manager (prod/age-private-key)
 # public key goes in .sops.yaml
 
 # Encrypt a secret file
-sops --encrypt secrets/cloudflare-token.yaml > secrets/cloudflare-token.enc.yaml
-
-# Flux decrypts automatically using age key stored as K8s Secret in flux-system
+sops --encrypt flux/apps/databases/backup-secret.yaml > flux/apps/databases/backup-secret.enc.yaml
 ```
 
 `.sops.yaml`:
@@ -183,7 +176,8 @@ creation_rules:
     age: age1<prod-public-key>
 ```
 
-Encrypted files are safe to commit. Flux decrypts in-cluster using the private age key (stored as K8s Secret, not in Git).
+Encrypted files are safe to commit. Flux decrypts in-cluster using the private age key
+(stored as K8s Secret in `flux-system`, not in Git).
 
 ---
 
@@ -196,65 +190,136 @@ Encrypted files are safe to commit. Flux decrypts in-cluster using the private a
 - [ ] Add to `.gitignore`: `*.kubeconfig`, `talosconfig`, `*-patched.yaml`
 - [ ] Create GCS bucket for Pulumi state (`gs://p2bid-pulumi-state`)
 - [ ] Create GCP KMS key ring for Pulumi stack encryption
-- [ ] Store rotated secrets in GCP Secret Manager
-- [ ] Generate age key, store private key in GCP Secret Manager, add public key to `.sops.yaml`
-- [ ] Firewall `6443` and `50000` to known IPs only
+- [ ] Store rotated secrets in GCP Secret Manager under `prod/` prefix
+- [ ] Generate age key, store private key as `prod/age-private-key`, add public key to `.sops.yaml`
+- [ ] Firewall `6443` and `50000` to known IPs only (CI runner IP, VPN, developer IPs)
+- [ ] Configure Workload Identity Federation for CI/CD (no static service account keys)
 
-### Phase 1 — Pulumi: Talos bootstrap
+### Phase 1 — Pulumi: Talos bootstrap (ComponentResource)
+
+All Talos resources are wrapped in a `TalosCluster` ComponentResource. This groups them
+under one node in `pulumi preview`, ensures correct dependency ordering, and makes the
+component reusable if additional clusters are added.
 
 ```python
-# pulumi/infra/talos.py
+# pulumi/infra/components/talos_cluster.py
 
 import pulumi
 import pulumi_gcp as gcp
 from pulumi_talos import machine, cluster
 
+
+class TalosClusterArgs:
+    def __init__(
+        self,
+        cluster_name: pulumi.Input[str],
+        node_ip: pulumi.Input[str],
+        endpoint: pulumi.Input[str],
+        patch_file: pulumi.Input[str],
+        gcp_project: pulumi.Input[str],
+        secret_prefix: pulumi.Input[str],
+    ):
+        self.cluster_name = cluster_name
+        self.node_ip = node_ip
+        self.endpoint = endpoint
+        self.patch_file = patch_file
+        self.gcp_project = gcp_project
+        self.secret_prefix = secret_prefix  # e.g. "prod" or "staging"
+
+
+class TalosCluster(pulumi.ComponentResource):
+    kubeconfig: pulumi.Output[str]
+
+    def __init__(
+        self,
+        name: str,
+        args: TalosClusterArgs,
+        opts: pulumi.ResourceOptions = None,
+    ):
+        super().__init__("p2bid:infra:TalosCluster", name, None, opts)
+
+        # Cluster secrets (PKI generated by Talos provider, stored in state/Secret Manager)
+        secrets = machine.Secrets(
+            f"{name}-secrets",
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Generate controlplane config from patch file
+        # Pass Output directly — never unwrap with .apply() to create resources
+        cp_config = machine.GetConfigurationOutput(
+            cluster_name=args.cluster_name,
+            machine_type="controlplane",
+            cluster_endpoint=pulumi.Output.format("https://{}:6443", args.endpoint),
+            machine_secrets=secrets,
+            config_patches=[pulumi.Output.from_input(args.patch_file).apply(
+                lambda path: open(path).read()
+            )],
+        )
+
+        # Apply config to node
+        apply = machine.ConfigurationApply(
+            f"{name}-apply",
+            client_configuration=secrets.client_configuration,
+            machine_configuration_input=cp_config.machine_configuration,
+            node=args.node_ip,
+            apply_mode="reboot",
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Bootstrap (one-time; idempotent after first run)
+        bootstrap = machine.Bootstrap(
+            f"{name}-bootstrap",
+            client_configuration=secrets.client_configuration,
+            node=args.node_ip,
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[apply]),
+        )
+
+        # Get kubeconfig after bootstrap completes
+        kube = cluster.Kubeconfig(
+            f"{name}-kubeconfig",
+            client_configuration=secrets.client_configuration,
+            endpoint=args.endpoint,
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[bootstrap]),
+        )
+
+        # Persist kubeconfig to Secret Manager (never exported to state in plaintext)
+        secret_name = pulumi.Output.format("{}/kubeconfig", args.secret_prefix)
+        gcp.secretmanager.SecretVersion(
+            f"{name}-kubeconfig-secret",
+            secret=secret_name,
+            secret_data=kube.kubeconfig_raw,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        self.kubeconfig = kube.kubeconfig_raw
+
+        # register_outputs must be the last line of __init__
+        self.register_outputs({"kubeconfig": self.kubeconfig})
+```
+
+```python
+# pulumi/infra/talos.py
+
+import pulumi
+from infra.components.talos_cluster import TalosCluster, TalosClusterArgs
+
 config = pulumi.Config()
+env = pulumi.get_stack()  # "prod" or "staging"
 
-def get_secret(name: str) -> pulumi.Output[str]:
-    v = gcp.secretmanager.get_secret_version_output(secret=name, project="p2bid")
-    return v.secret_data
-
-# Secrets from GCP Secret Manager (never hardcoded)
-secrets = machine.Secrets("cluster-secrets")
-
-# Generate controlplane config
-cp_config = machine.GetConfigurationOutput(
-    cluster_name="p2bid-prod",
-    machine_type="controlplane",
-    cluster_endpoint="https://51.195.61.13:6443",
-    machine_secrets=secrets,
-    config_patches=[open("patches/controlplane.yaml").read()],
+cluster = TalosCluster(
+    f"p2bid-{env}",
+    TalosClusterArgs(
+        cluster_name=f"p2bid-{env}",
+        node_ip=config.require("node_ip"),
+        endpoint=config.require("node_ip"),
+        patch_file=f"patches/{env}-controlplane.yaml",
+        gcp_project="p2bid",
+        secret_prefix=env,
+    ),
 )
 
-# Apply to node
-apply = machine.ConfigurationApply("apply-controlplane",
-    client_configuration=secrets.client_configuration,
-    machine_configuration_input=cp_config.machine_configuration,
-    node="51.195.61.13",
-    apply_mode="reboot",
-)
-
-# Bootstrap cluster (one-time)
-bootstrap = machine.Bootstrap("bootstrap",
-    client_configuration=secrets.client_configuration,
-    node="51.195.61.13",
-    opts=pulumi.ResourceOptions(depends_on=[apply]),
-)
-
-# Export kubeconfig to ESC
-kubeconfig = cluster.Kubeconfig("kubeconfig",
-    client_configuration=secrets.client_configuration,
-    endpoint="51.195.61.13",
-    opts=pulumi.ResourceOptions(depends_on=[bootstrap]),
-)
-pulumi.export("kubeconfig", kubeconfig.kubeconfig_raw)
-
-# Save kubeconfig back to Secret Manager
-gcp.secretmanager.SecretVersion("kubeconfig-version",
-    secret="kubeconfig",
-    secret_data=kubeconfig.kubeconfig_raw,
-)
+# kubeconfig is marked secret — not visible in plain pulumi stack output
+pulumi.export("kubeconfig", pulumi.Output.secret(cluster.kubeconfig))
 ```
 
 ### Phase 2 — Flux bootstrap via Pulumi
@@ -262,18 +327,21 @@ gcp.secretmanager.SecretVersion("kubeconfig-version",
 ```python
 # pulumi/infra/flux.py
 
-from pulumi_kubernetes.helm.v3 import Release
 from pulumi_flux import FluxBootstrapGit
+import pulumi
 
-# Flux bootstrap — points at this repo, flux/ directory
-flux = FluxBootstrapGit("flux",
+env = pulumi.get_stack()
+
+# Flux bootstrap — points at this repo, flux/clusters/<env> directory
+flux = FluxBootstrapGit(
+    f"flux-{env}",
     url="https://github.com/serhii-p2bid/p2bid-infra",
     branch="main",
-    path="flux/clusters/prod",
+    path=f"flux/clusters/{env}",
 )
 ```
 
-After this runs, Flux takes over and syncs everything from `flux/` directory.
+After this runs, Flux takes over and syncs everything from `flux/clusters/<env>/`.
 
 ### Phase 3 — Flux: Infrastructure
 
@@ -285,7 +353,7 @@ cilium → cert-manager → cnpg-operator → local-path-provisioner
                       → network-policies
 ```
 
-Example `flux/clusters/prod/infrastructure.yaml`:
+`flux/clusters/prod/infrastructure.yaml`:
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -299,7 +367,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  dependsOn: []
   decryption:
     provider: sops
     secretRef:
@@ -313,13 +380,12 @@ databases → gitlab → gitlab-runner
 ```
 
 `flux/apps/databases/` includes:
-- `dev-pg.yaml` — with resource limits + backup config
 - `gitlab-pg.yaml` — with resource limits + backup config + 3 instances in prod
 - `backup-secret.enc.yaml` — SOPS-encrypted MinIO/GCS credentials
 
 `flux/apps/gitlab/` includes:
 - `HelmRelease` for GitLab CE
-- Fixed security issues: no public PostgreSQL LB, HTTPS redirect, correct resource limits
+- Fixed: no public PostgreSQL LB, HTTPS redirect, correct resource limits
 
 ### Phase 5 — Security hardening in Flux
 
@@ -345,7 +411,8 @@ spec:
 
 ### Phase 6 — Flagger (future, for custom apps)
 
-For GitLab and PostgreSQL — **do not use Flagger**. They are stateful and don't support canary traffic shifting.
+For GitLab and PostgreSQL — **do not use Flagger**. They are stateful and don't support
+canary traffic shifting.
 
 Flagger makes sense when the team builds custom stateless services on this cluster:
 
@@ -379,6 +446,116 @@ Install Flagger via Flux `HelmRelease` when first custom app is ready.
 
 ---
 
+## CI/CD Pipeline (Automation API)
+
+**Rule:** No developer deploys directly to prod. All prod changes go through CI/CD with a
+staging gate and explicit approval.
+
+### OIDC Authentication (no static service account keys)
+
+CI/CD authenticates to GCP via Workload Identity Federation — short-lived tokens, no keys
+stored in CI secrets:
+
+```yaml
+# .github/workflows/deploy.yml (or GitLab CI equivalent)
+- name: Authenticate to GCP
+  uses: google-github-actions/auth@v2
+  with:
+    workload_identity_provider: "projects/123/locations/global/workloadIdentityPools/ci/providers/github"
+    service_account: "pulumi-ci@p2bid.iam.gserviceaccount.com"
+```
+
+The service account has the minimum required roles:
+- `roles/secretmanager.secretAccessor` — read cluster secrets
+- `roles/storage.objectAdmin` on `gs://p2bid-pulumi-state` — manage Pulumi state
+- `roles/cloudkms.cryptoKeyEncrypterDecrypter` — decrypt stack config
+
+### Multi-stack orchestration with Automation API
+
+```python
+# ci/deploy.py — orchestrates staging → prod with approval gate
+
+import sys
+from pulumi import automation as auto
+
+
+def deploy_stack(stack_name: str, work_dir: str = "./pulumi") -> auto.UpResult:
+    stack = auto.create_or_select_stack(
+        stack_name=stack_name,
+        work_dir=work_dir,
+    )
+    stack.set_config("gcp:project", auto.ConfigValue("p2bid"))
+    print(f"\n--- pulumi preview ({stack_name}) ---")
+    stack.preview(on_output=print)
+
+    print(f"\n--- pulumi up ({stack_name}) ---")
+    result = stack.up(on_output=print)
+    print(f"Update summary: {result.summary.result}")
+    return result
+
+
+def main() -> None:
+    env = sys.argv[1] if len(sys.argv) > 1 else "staging"
+
+    if env == "prod":
+        # Always deploy to staging first; CI gate enforces this order
+        print("=== Deploying staging (gate before prod) ===")
+        try:
+            deploy_stack("staging")
+        except Exception as exc:
+            print(f"Staging deploy failed: {exc}")
+            sys.exit(1)
+
+        # Explicit prod approval required (CI environment protection rules)
+        print("=== Staging passed — deploying prod ===")
+        try:
+            deploy_stack("prod")
+        except Exception as exc:
+            print(f"Prod deploy failed: {exc}")
+            sys.exit(1)
+    else:
+        deploy_stack(env)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### Pipeline stages
+
+```
+PR opened
+  └── pulumi preview (staging)       # shows planned changes
+      └── security scan (ruff + bandit)  # blocks on HIGH findings
+          └── merge to main
+              └── pulumi up (staging)    # auto-deploy to staging
+                  └── smoke test         # verify endpoints
+                      └── manual approval gate
+                          └── pulumi up (prod)   # gated prod deploy
+```
+
+**Security scan gate** — blocks merge on HIGH/CRITICAL findings:
+```bash
+bandit -r pulumi/ -ll -ii       # Python security scan
+trivy config pulumi/             # IaC misconfiguration scan
+```
+
+### Rollback
+
+If a prod deploy causes issues, rollback within 5 minutes:
+
+```bash
+# Option 1: Pulumi rollback (re-run previous stack state)
+pulumi stack history --stack prod
+pulumi up --target-urn <previous-resource-urn> --stack prod
+
+# Option 2: Flux rollback (revert Git commit → Flux reconciles)
+git revert HEAD && git push
+# Flux detects the revert and applies the previous state automatically
+```
+
+---
+
 ## What Stays the Same
 
 - Cilium as CNI + Gateway API controller
@@ -394,13 +571,16 @@ Install Flagger via Flux `HelmRelease` when first custom app is ready.
 |--------|-------|
 | YAML files applied manually | Flux reconciles from Git automatically |
 | Secrets in Git plaintext | Secrets in GCP Secret Manager or SOPS-encrypted |
-| Talos configs hand-crafted | Generated by Pulumi, secrets from GCP Secret Manager |
+| Talos configs hand-crafted | Generated by Pulumi `TalosCluster` ComponentResource |
 | No resource limits on DBs | Limits defined in Flux manifests |
 | PostgreSQL exposed publicly | Internal ClusterIP only |
 | No NetworkPolicies | Namespace isolation via Flux |
 | No DB backups | CNPG barmanObjectStore configured |
 | HTTP without redirect | HTTPRoute redirect rule in Gateway |
 | Kubernetes API open to internet | Firewalled to known IPs |
+| Direct prod deploys | staging gate + approval via CI/CD Automation API |
+| Static GCP service account keys | Workload Identity Federation (OIDC) |
+| Shared secrets across envs | Separate Secret Manager paths per environment |
 
 ---
 
@@ -421,9 +601,14 @@ curl -s https://fluxcd.io/install.sh | sudo bash
 brew install sops age        # macOS
 apt install sops age         # Linux
 
-# Verify
+# Security scanning
+pip install bandit
+trivy --version || curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+
+# Verify all tools
 flux check --pre
 pulumi version
 sops --version
 age --version
+bandit --version
 ```
