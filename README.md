@@ -101,6 +101,20 @@ This repo ships local Claude Code commands in [.claude/commands/](.claude/comman
 
 ---
 
+## Claude Code Built-in Skills
+
+These are global Claude Code skills — available automatically, no installation needed.
+
+| Skill | How to invoke | When to use |
+|-------|--------------|-------------|
+| `simplify` | `/simplify` | After writing or changing Python infra code — reviews for reuse, quality, and efficiency. Run before `/commit`. |
+| `loop` | `/loop <interval> <command>` | Monitor a long-running deploy or poll stack outputs repeatedly. E.g. `/loop 2m /preview staging` |
+| `update-config` | `/update-config` | Configure Claude Code hooks, permissions, or env vars for this project |
+
+> Skills are part of Claude Code itself and cannot be bundled into the repository.
+
+---
+
 ## MCP Servers
 
 Project-local MCP config in [.mcp.json](.mcp.json):
