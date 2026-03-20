@@ -14,10 +14,13 @@ Infrastructure-as-Code for the **p2bid** project, written in [Pulumi](https://ww
 **Manually:**
 
 ```bash
-# 1. Install: Python 3.12+, Poetry, Pulumi CLI, cloud CLI (gcloud/aws/az)
+# 1. Install: Python 3.12+, uv (recommended) or Poetry, Pulumi CLI, cloud CLI (gcloud/aws/az)
+curl -LsSf https://astral.sh/uv/install.sh | sh   # uv
+curl -fsSL https://get.pulumi.com | sh             # Pulumi
 
 # 2. Install dependencies
-poetry install && poetry shell
+uv sync          # preferred
+# poetry install   # fallback
 
 # 3. Authenticate
 pulumi login

@@ -11,14 +11,16 @@ Verify these are installed and print their versions:
 ```bash
 python3 --version        # must be 3.12+
 pulumi version           # any recent version
-poetry --version
+uv --version             # preferred package manager
+poetry --version         # fallback if uv is not available
 ```
 
 If any are missing, print install instructions:
 
-- **Python 3.12+**: https://www.python.org/downloads/ or `pyenv install 3.12`
+- **Python 3.12+**: `pyenv install 3.12` or https://www.python.org/downloads/
 - **Pulumi**: `curl -fsSL https://get.pulumi.com | sh`
-- **Poetry**: `curl -sSL https://install.python-poetry.org | python3 -`
+- **uv** (recommended): `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Poetry** (fallback): `curl -sSL https://install.python-poetry.org | python3 -`
 
 Stop and ask the user to install missing tools before continuing.
 
@@ -26,7 +28,13 @@ Stop and ask the user to install missing tools before continuing.
 
 ### 2. Install Python dependencies
 
+Use `uv` if available, otherwise fall back to `poetry`:
+
 ```bash
+# Preferred
+uv sync
+
+# Fallback
 poetry install
 ```
 
