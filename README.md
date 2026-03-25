@@ -117,54 +117,146 @@ Pulumi manages only the Flux bootstrap layer. All workloads (GitLab, CNPG, cert-
 
 ---
 
-## Secrets Management
+## Secrets & Authorization
 
-All runtime secrets live in **GCP Secret Manager** (`p2bid-staging-xc69rp` project) and are pulled into the cluster by **External Secrets Operator** using **Workload Identity Federation** — no service account keys anywhere.
+This project uses **zero long-lived credentials** in CI/CD. All authentication is based on short-lived tokens via Workload Identity Federation (WIF).
 
-### GCP secrets used
+### Authorization Map
 
-| Secret name | Contents |
-|-------------|---------|
-| `p2bid-staging-gitlab-db-password` | GitLab PostgreSQL password |
-| `p2bid-staging-gitlab-runner-token` | GitLab Runner auth token (`glrt-…`) |
-| `p2bid-staging-gitlab-runner-cache-s3` | MinIO credentials JSON `{accessKey, secretKey}` |
-| `p2bid-staging-cloudflare-api-token` | Cloudflare DNS token (cert-manager DNS-01) |
-| `p2bid-staging-cloudflare-pages-token` | Cloudflare Pages deploy token |
-
-### Pulumi secrets (encrypted in Pulumi.staging.yaml)
-
-| Config key | Contents |
-|------------|---------|
-| `p2bid-infra:git_ssh_key` | SSH private key for Flux → GitHub pull |
-
-### Adding a new secret
-
-```bash
-# 1. Create in GCP Secret Manager
-echo -n "my-value" | gcloud secrets create my-secret \
-  --project=p2bid-staging-xc69rp --data-file=-
-
-# 2. Add ExternalSecret manifest in flux/apps/<app>/external-secrets.yaml
-# 3. Reference the K8s secret in the HelmRelease values
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  WHO                    HOW                          WHAT they access        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Developer (local)      gcloud auth login            GCP Secret Manager      │
+│                         + application-default        GCS state bucket        │
+│                         PULUMI_CONFIG_PASSPHRASE env Pulumi stack config     │
+│                         kubeconfig (talosctl)         Talos cluster           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  GitHub Actions CI/CD   WIF (OIDC token from GitHub) GCS state bucket        │
+│                         → impersonates               GCP Secret Manager      │
+│                           pulumi-backend@ SA         (via pulumi-backend SA) │
+│                         PULUMI_CONFIG_PASSPHRASE      Pulumi stack config     │
+│                         KUBECONFIG_B64 secret         Talos cluster           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ESO (in-cluster)       WIF (projected K8s SA token)  GCP Secret Manager     │
+│                         → impersonates                (read secrets)          │
+│                           ext-secrets-operator@ SA                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Flux (in-cluster)      SSH key (flux-git-credentials) GitHub repo (pull)    │
+│                         secret in flux-system ns                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## GCP Workload Identity Federation
+### GCP Workload Identity Federation Pools
 
-ESO authenticates to GCP without SA keys via two WIF pools:
+#### Pool: `talos-staging` — for ESO in-cluster
 
-| Pool | Provider | Used by |
-|------|----------|---------|
-| `talos-staging` | `talos` (OIDC issuer: `https://oidc.p2bid.global/staging`) | ESO in cluster |
-| `github-actions` | `github` (attribute: `repository_owner == 'P2Bid'`) | GitHub Actions CI/CD |
+| Field | Value |
+|-------|-------|
+| Pool ID | `talos-staging` |
+| Provider | `talos` |
+| OIDC Issuer | `https://oidc.p2bid.global/staging` |
+| Allowed audience | `https://oidc.p2bid.global/staging` |
+| Impersonates SA | `ext-secrets-operator@p2bid-staging-xc69rp.iam.gserviceaccount.com` |
+| SA permissions | `roles/secretmanager.secretAccessor` on `p2bid-staging-xc69rp` |
 
-The OIDC discovery document and JWKS for `talos-staging` are served from Cloudflare Pages at `https://oidc.p2bid.global/staging/` — deployed automatically via the `deploy-oidc-pages` GitHub Actions workflow whenever `cloudflare/oidc/` changes.
+The Talos API server issues OIDC tokens. Because its JWKS endpoint is not publicly reachable directly, a static OIDC discovery document and JWKS are served from **Cloudflare Pages** at `https://oidc.p2bid.global/staging/` (files in `cloudflare/oidc/`). GCP uses these to validate cluster-issued tokens.
 
-> **JWKS rotation:** if the Talos API server signing key rotates, update `cloudflare/oidc/staging/openid/v1/jwks` with the new key from:
+ESO pods receive a projected ServiceAccount token (audience: `https://oidc.p2bid.global/staging`) and a ConfigMap (`gcp-wif-credential-config`) that tells the Google auth library how to exchange it for a GCP access token.
+
+#### Pool: `github-actions` — for CI/CD pipelines
+
+| Field | Value |
+|-------|-------|
+| Pool ID | `github-actions` |
+| Provider | `github` |
+| OIDC Issuer | `https://token.actions.githubusercontent.com` |
+| Attribute condition | `assertion.repository_owner == 'P2Bid'` |
+| Impersonates SA | `pulumi-backend@p2bid-staging-xc69rp.iam.gserviceaccount.com` |
+| SA permissions | `roles/storage.objectAdmin` on GCS state bucket<br>`roles/secretmanager.secretAccessor` on `p2bid-staging-xc69rp` |
+
+> ⚠️ If the repo is transferred to a different GitHub org, update the attribute condition:
 > ```bash
-> kubectl get --raw /openid/v1/jwks
+> gcloud iam workload-identity-pools providers update-oidc github \
+>   --workload-identity-pool=github-actions --location=global \
+>   --project=p2bid-staging-xc69rp \
+>   --attribute-condition="assertion.repository_owner == '<NEW_ORG>'"
 > ```
+> Also update the `workloadIdentityUser` binding on the `pulumi-backend` SA.
+
+---
+
+### GCP Secret Manager Secrets
+
+Project: `p2bid-staging-xc69rp`
+
+| Secret name | Contents | Consumed by |
+|-------------|----------|-------------|
+| `p2bid-staging-gitlab-db-password` | GitLab PostgreSQL password | ESO → `gitlab` namespace |
+| `p2bid-staging-gitlab-runner-token` | GitLab Runner auth token (`glrt-…`) | ESO → `gitlab-runner` namespace |
+| `p2bid-staging-gitlab-runner-cache-s3` | MinIO credentials `{accessKey, secretKey}` | ESO → `gitlab-runner` namespace |
+| `p2bid-staging-cloudflare-api-token` | Cloudflare DNS API token | ESO → `cert-manager` namespace |
+| `p2bid-staging-cloudflare-pages-token` | Cloudflare Pages deploy token | GitHub Actions |
+| `p2bid-staging-pulumi-passphrase` | Pulumi stack encryption passphrase | Reference / onboarding |
+
+To add or update a secret:
+```bash
+# Create new
+echo -n "value" | gcloud secrets create my-secret \
+  --project=p2bid-staging-xc69rp --data-file=-
+
+# Update existing
+echo -n "new-value" | gcloud secrets versions add my-secret \
+  --project=p2bid-staging-xc69rp --data-file=-
+```
+
+---
+
+### Pulumi Stack Secrets (encrypted in `Pulumi.staging.yaml`)
+
+| Config key | Contents | How to update |
+|------------|----------|---------------|
+| `p2bid-infra:git_ssh_key` | SSH private key for Flux to pull from GitHub | `pulumi config set --stack staging --secret p2bid-infra:git_ssh_key "$(cat ~/.ssh/id_ed25519)"` |
+
+Encryption passphrase: stored in GCP Secret Manager as `p2bid-staging-pulumi-passphrase` and in GitHub Actions as `PULUMI_CONFIG_PASSPHRASE`.
+
+---
+
+### GitHub Actions Secrets
+
+Set at `https://github.com/P2Bid/p2bid-infra/settings/secrets/actions`:
+
+| Secret | Used by | Description |
+|--------|---------|-------------|
+| `PULUMI_CONFIG_PASSPHRASE` | Deploy + Drift workflows | Decrypts `Pulumi.staging.yaml` secrets |
+| `KUBECONFIG_B64` | Deploy workflow | Base64-encoded kubeconfig for Talos cluster access |
+| `CLOUDFLARE_PAGES_TOKEN` | Deploy OIDC Pages workflow | Cloudflare API token with Pages write permission |
+| `CLOUDFLARE_ACCOUNT_ID` | Deploy OIDC Pages workflow | Cloudflare account ID (`651ba5636ca1bf71a2c53c0bb4a8da39`) |
+
+GCP authentication in CI uses WIF — no GCP credentials are stored as GitHub secrets.
+
+To regenerate `KUBECONFIG_B64`:
+```bash
+talosctl --talosconfig /path/to/talosconfig kubeconfig /tmp/kube.yaml
+gh secret set KUBECONFIG_B64 --repo P2Bid/p2bid-infra \
+  --body "$(base64 -w0 /tmp/kube.yaml)"
+```
+
+---
+
+### Flux Git Credentials (in-cluster)
+
+Flux pulls from `ssh://git@github.com/P2Bid/p2bid-infra.git` using an SSH key stored as a Kubernetes secret in the `flux-system` namespace:
+
+| Secret | Namespace | Keys |
+|--------|-----------|------|
+| `flux-git-credentials` | `flux-system` | `identity` (private key), `known_hosts` |
+
+This secret is created by Pulumi from the `p2bid-infra:git_ssh_key` stack config. The corresponding **public key must be added as a Deploy Key** on the GitHub repo:
+
+`https://github.com/P2Bid/p2bid-infra/settings/keys`
 
 ---
 
@@ -172,21 +264,9 @@ The OIDC discovery document and JWKS for `talos-staging` are served from Cloudfl
 
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
-| **Deploy Infrastructure** | Push to `main` (infra files) or `workflow_dispatch` | `pulumi up --stack staging` (or prod) |
+| **Deploy Infrastructure** | Push to `main` (`infra/**`, `Pulumi.*.yaml`) or `workflow_dispatch` | `pulumi up --stack staging` (or prod) |
 | **Drift Detection** | Hourly cron + `workflow_dispatch` | `pulumi preview`; opens a GitHub issue if drift detected |
 | **Deploy OIDC Pages** | Push to `main` (`cloudflare/oidc/**`) or `workflow_dispatch` | Deploys static OIDC files to Cloudflare Pages (`p2bid-oidc`) |
-
-### Required GitHub Actions secrets
-
-Set at `https://github.com/P2Bid/p2bid-infra/settings/secrets/actions`:
-
-| Secret | Used by |
-|--------|---------|
-| `CLOUDFLARE_PAGES_TOKEN` | Deploy OIDC Pages workflow |
-| `CLOUDFLARE_ACCOUNT_ID` | Deploy OIDC Pages workflow |
-| `PULUMI_CONFIG_PASSPHRASE` | Deploy + Drift workflows |
-
-GCP auth in CI uses Workload Identity Federation (no stored credentials).
 
 ---
 
@@ -195,7 +275,7 @@ GCP auth in CI uses Workload Identity Federation (no stored credentials).
 ```
 flux-system (root Kustomization)
 └── infrastructure-controllers     cert-manager, ESO, CNPG, Flagger, Cilium config
-    └── infrastructure-configs     ClusterSecretStore, cert issuers, gateway, WIF config
+    └── infrastructure-configs     ClusterSecretStore, cert issuers, gateway, WIF ConfigMap
         └── apps                   GitLab, GitLab Runner, databases
 ```
 
@@ -211,6 +291,20 @@ To force a re-sync:
 ```bash
 kubectl annotate kustomization <name> -n flux-system \
   reconcile.fluxcd.io/requestedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
+```
+
+---
+
+## JWKS Rotation
+
+If the Talos API server signing key rotates (rare, happens on full cluster rebuild), update the static JWKS:
+
+```bash
+# 1. Fetch new JWKS from cluster
+kubectl get --raw /openid/v1/jwks > cloudflare/oidc/staging/openid/v1/jwks
+
+# 2. Commit and push — GitHub Actions deploys it to Cloudflare Pages automatically
+git add cloudflare/oidc/ && git commit -m "fix: rotate JWKS" && git push
 ```
 
 ---
