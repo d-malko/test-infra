@@ -24,6 +24,9 @@ class FluxBootstrapArgs:
     cluster_path: str = "flux/clusters/staging"
     flux_version: str = "2.8.3"
     git_token: pulumi.Input[str] | None = None
+    # SSH key auth — mutually exclusive with git_token.
+    # Provide the PEM-encoded private key; known_hosts is auto-populated for github.com.
+    git_ssh_key: pulumi.Input[str] | None = None
     # No GCP credentials needed — ESO uses Workload Identity Federation
     # via projected K8s ServiceAccount tokens. GCP WIF config is in
     # flux/infrastructure/configs/secret-store/wif-credential-config.yaml
@@ -58,8 +61,32 @@ class FluxBootstrap(pulumi.ComponentResource):
         )
 
         # ── Git credentials (required for private repositories) ─────────────
+        _GITHUB_KNOWN_HOSTS = (
+            "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+        )
+
         git_secret: kubernetes.core.v1.Secret | None = None
-        if args.git_token is not None:
+        if args.git_ssh_key is not None:
+            # SSH auth: Flux expects identity / known_hosts keys in the secret.
+            git_secret = kubernetes.core.v1.Secret(
+                f"{name}-git-credentials",
+                metadata=kubernetes.meta.v1.ObjectMetaArgs(
+                    name=_GIT_SECRET_NAME,
+                    namespace=_FLUX_NAMESPACE,
+                ),
+                type="Opaque",
+                string_data={
+                    "identity": args.git_ssh_key,
+                    "known_hosts": _GITHUB_KNOWN_HOSTS,
+                },
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    depends_on=[flux],
+                    additional_secret_outputs=["stringData"],
+                ),
+            )
+        elif args.git_token is not None:
+            # HTTPS token auth.
             git_secret = kubernetes.core.v1.Secret(
                 f"{name}-git-credentials",
                 metadata=kubernetes.meta.v1.ObjectMetaArgs(
