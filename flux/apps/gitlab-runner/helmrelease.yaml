@@ -1,0 +1,86 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: gitlab-runner
+  namespace: gitlab-runner
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: gitlab-runner
+      version: "0.86.0"
+      sourceRef:
+        kind: HelmRepository
+        name: gitlab
+        namespace: gitlab-runner
+      interval: 24h
+  install:
+    remediation:
+      retries: 2
+  upgrade:
+    remediation:
+      retries: 2
+  values:
+    gitlabUrl: https://gitlab.p2bid.global
+    concurrent: 4
+    checkInterval: 30
+
+    rbac:
+      create: true
+      rules:
+        - apiGroups: [""]
+          resources: [pods]
+          verbs: [create, delete, get, list, watch]
+        - apiGroups: [""]
+          resources: [pods/exec, pods/attach]
+          verbs: [create, get]
+        - apiGroups: [""]
+          resources: [pods/log]
+          verbs: [get, list]
+        - apiGroups: [""]
+          resources: [configmaps, secrets, serviceaccounts]
+          verbs: [get, list, watch]
+        - apiGroups: [""]
+          resources: [secrets]
+          verbs: [create, delete, update]
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+    runners:
+      secret: gitlab-runner-token
+      cache:
+        secretName: gitlab-runner-cache-s3
+      config: |
+        [[runners]]
+          request_concurrency = 4
+          environment = ["HOME=/home/gitlab-runner"]
+          [runners.kubernetes]
+            namespace = "gitlab-runner"
+            image = "alpine:3.21"
+            privileged = false
+            cpu_limit = "2"
+            memory_limit = "2Gi"
+            cpu_request = "100m"
+            memory_request = "256Mi"
+            helper_cpu_limit = "500m"
+            helper_memory_limit = "256Mi"
+            helper_cpu_request = "50m"
+            helper_memory_request = "64Mi"
+            [runners.kubernetes.pod_security_context]
+              run_as_non_root = true
+              run_as_user = 1000
+            [[runners.kubernetes.volumes.empty_dir]]
+              name = "home"
+              mount_path = "/home/gitlab-runner"
+          [runners.cache]
+            Type = "s3"
+            Shared = true
+            [runners.cache.s3]
+              ServerAddress = "gitlab-minio-svc.gitlab.svc.cluster.local:9000"
+              BucketName = "runner-cache"
+              Insecure = true

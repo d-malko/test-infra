@@ -1,0 +1,12 @@
+config:
+  # Kubernetes provider uses KUBECONFIG env var (set via talosctl kubeconfig).
+  p2bid-infra:environment: staging
+  p2bid-infra:git_url: https://github.com/serhii-p2bid/p2bid-infra.git
+  p2bid-infra:git_branch: main
+  p2bid-infra:cluster_path: flux/clusters/staging
+encryptionsalt: v1:3zG46xdMYp0=:v1:A0Bhr8w9vIIX0y0N:n/xnDc0tiJoutevqIw3Owmkpf1uo4g==
+
+# Optional: set with `pulumi config set --stack staging --secret p2bid-infra:git_token <token>`
+# Required if the repository is private.
+# p2bid-infra:git_token:
+#   secure: <encrypted>

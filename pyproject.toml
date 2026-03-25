@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "p2bid-infra"
+version = "0.1.0"
+description = "p2bid infrastructure – Flux bootstrap via Pulumi"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pulumi = ">=3.0.0,<4.0.0"
+pulumi-kubernetes = ">=4.20.0,<5.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

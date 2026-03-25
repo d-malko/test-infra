@@ -1,0 +1,157 @@
+name: Drift Detection
+
+on:
+  schedule:
+    # Run every hour. Detects out-of-band changes to the cluster.
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: "Stack to check"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, prod]
+
+env:
+  PULUMI_STACK: ${{ github.event.inputs.stack || 'staging' }}
+
+jobs:
+  drift:
+    name: Check drift (${{ github.event.inputs.stack || 'staging' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for WIF
+      issues: write     # needed to open drift issues
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -r requirements.txt
+
+      - name: Authenticate to GCP (staging)
+        if: env.PULUMI_STACK == 'staging'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/88022157757/locations/global/workloadIdentityPools/github-actions/providers/github"
+          service_account: "pulumi-backend@p2bid-staging-xc69rp.iam.gserviceaccount.com"
+
+      - name: Authenticate to GCP (prod)
+        if: env.PULUMI_STACK == 'prod'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "${{ vars.GCP_WIF_PROVIDER_PROD }}"
+          service_account: "${{ vars.GCP_SA_PULUMI_PROD }}"
+
+      - name: Set Pulumi backend URL
+        run: |
+          if [[ "$PULUMI_STACK" == "staging" ]]; then
+            echo "PULUMI_BACKEND_URL=gs://p2bid-staging-xc69rp-infra-state" >> "$GITHUB_ENV"
+          else
+            echo "PULUMI_BACKEND_URL=${{ vars.GCP_STATE_BUCKET_PROD }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run pulumi preview (drift check)
+        id: drift
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+        run: |
+          mkdir -p "${{ runner.temp }}"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "${{ runner.temp }}/kubeconfig"
+          chmod 600 "${{ runner.temp }}/kubeconfig"
+          export KUBECONFIG="${{ runner.temp }}/kubeconfig"
+
+          set +e
+          pulumi preview \
+            --stack "$PULUMI_STACK" \
+            --diff \
+            --non-interactive \
+            --refresh \
+            2>&1 | tee /tmp/drift.txt
+          EXIT_CODE=$?
+          set -e
+
+          # Detect meaningful changes (create/update/delete/replace)
+          if grep -qE '^\s*(~|~-|\+|-|+-)\s' /tmp/drift.txt; then
+            echo "drift_detected=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift_detected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Store preview output for the issue body (truncate to 60k chars)
+          head -c 60000 /tmp/drift.txt > /tmp/drift_truncated.txt
+          echo "DRIFT_BODY<<DRIFT_EOF" >> "$GITHUB_ENV"
+          cat /tmp/drift_truncated.txt >> "$GITHUB_ENV"
+          echo "DRIFT_EOF" >> "$GITHUB_ENV"
+
+      - name: Open GitHub issue if drift detected
+        if: steps.drift.outputs.drift_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const stack = process.env.PULUMI_STACK;
+            const body = process.env.DRIFT_BODY;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            // Check if there is already an open drift issue for this stack
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: [`drift`, `stack:${stack}`],
+            });
+
+            if (issues.data.length > 0) {
+              // Add a comment to the existing issue instead of opening a new one
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: `### Drift still present — ${new Date().toISOString()}\n\n[Run details](${runUrl})\n\n<details><summary>pulumi preview output</summary>\n\n\`\`\`\n${body}\n\`\`\`\n</details>`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `⚠️ Infrastructure drift detected — ${stack}`,
+                labels: [`drift`, `stack:${stack}`, `infrastructure`],
+                body: `## Drift detected on \`${stack}\` stack\n\nPulumi preview found resources that differ from the desired state in Git.\nThis means someone may have made out-of-band changes to the cluster.\n\n**Action required:** run \`pulumi up --stack ${stack}\` to reconcile, or investigate the changes.\n\n[View run](${runUrl})\n\n<details><summary>pulumi preview --refresh output</summary>\n\n\`\`\`\n${body}\n\`\`\`\n</details>`,
+              });
+            }
+
+      - name: Close resolved drift issues
+        if: steps.drift.outputs.drift_detected == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const stack = process.env.PULUMI_STACK;
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: [`drift`, `stack:${stack}`],
+            });
+
+            for (const issue of issues.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `✅ Drift resolved — no changes detected as of ${new Date().toISOString()}.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+            }

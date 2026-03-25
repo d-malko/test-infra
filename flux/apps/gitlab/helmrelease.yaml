@@ -1,0 +1,205 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: gitlab
+  namespace: gitlab
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: gitlab
+      version: "9.9.2"
+      sourceRef:
+        kind: HelmRepository
+        name: gitlab
+        namespace: gitlab
+      interval: 24h
+  install:
+    remediation:
+      retries: 2
+  upgrade:
+    remediation:
+      retries: 2
+  timeout: 30m
+  values:
+    global:
+      edition: ce
+      hosts:
+        domain: p2bid.global
+        gitlab:
+          name: gitlab.p2bid.global
+        registry:
+          name: glcr.p2bid.global
+        kas:
+          name: glkas.p2bid.global
+        https: true
+
+      ingress:
+        enabled: false
+        configureCertmanager: false
+
+      gatewayApi:
+        enabled: true
+        installEnvoy: false
+        gatewayRef:
+          name: main-gateway
+          namespace: gateway
+
+      psql:
+        host: gitlab-pg-rw.databases.svc.cluster.local
+        port: 5432
+        database: gitlabhq_production
+        username: gitlab
+        password:
+          secret: gitlab-pg-secret
+          key: password
+
+      minio:
+        enabled: true
+
+      appConfig:
+        initialDefaults:
+          signupEnabled: false
+
+      kas:
+        enabled: true
+
+      gitaly:
+        hooks:
+          preReceive:
+            configmap: gitaly-custom-hooks
+
+      defaultStorageClass: local-path
+
+    postgresql:
+      install: false
+
+    nginx-ingress:
+      enabled: false
+
+    installCertmanager: false
+
+    prometheus:
+      install: false
+
+    gitlab-runner:
+      install: false
+
+    redis:
+      architecture: standalone
+      master:
+        persistence:
+          storageClass: local-path
+          size: 8Gi
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+
+    minio:
+      persistence:
+        storageClass: local-path
+        size: 128Gi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          memory: 512Mi
+
+    registry:
+      hpa:
+        minReplicas: 1
+        maxReplicas: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 512Mi
+
+    gitlab:
+      gitaly:
+        persistence:
+          storageClass: local-path
+          size: 100Gi
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            memory: 2Gi
+
+      gitlab-shell:
+        minReplicas: 1
+        maxReplicas: 1
+        service:
+          type: LoadBalancer
+          loadBalancerIP: "51.195.15.0"
+          annotations:
+            lbipam.cilium.io/sharing-key: "main-lb"
+            lbipam.cilium.io/sharing-cross-namespace: "*"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+
+      webservice:
+        minReplicas: 1
+        maxReplicas: 1
+        replicas: 1
+        workerProcesses: 2
+        resources:
+          requests:
+            cpu: 300m
+            memory: 2Gi
+          limits:
+            memory: 5Gi
+        workhorse:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+      sidekiq:
+        minReplicas: 1
+        maxReplicas: 1
+        replicas: 1
+        resources:
+          requests:
+            cpu: 200m
+            memory: 1Gi
+          limits:
+            memory: 3Gi
+
+      toolbox:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+
+      kas:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+
+      migrations:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            memory: 2Gi

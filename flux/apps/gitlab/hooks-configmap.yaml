@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitaly-custom-hooks
+  namespace: gitlab
+data:
+  pre-receive: |
+    #!/bin/bash
+    set -euo pipefail
+
+    BRANCH_REGEX='^(main|develop|(feat|bugfix|hotfix|chore|refactor|release)/.+)$'
+    COMMIT_REGEX='^\[[A-Z]+-[0-9]+\] (feat|fix|bugfix|chore|docs|style|refactor|test|ci|perf|hotfix|release)(\(.+\))?: .+'
+    ZERO_SHA="0000000000000000000000000000000000000000"
+
+    errors=()
+
+    while read -r oldrev newrev refname; do
+      # Skip tag pushes
+      if [[ "$refname" == refs/tags/* ]]; then
+        continue
+      fi
+
+      # Skip branch deletions
+      if [[ "$newrev" == "$ZERO_SHA" ]]; then
+        continue
+      fi
+
+      # Validate branch name
+      if [[ "$refname" == refs/heads/* ]]; then
+        branch="${refname#refs/heads/}"
+        if ! [[ "$branch" =~ $BRANCH_REGEX ]]; then
+          errors+=("Branch '$branch' does not match naming convention.")
+          errors+=("  Allowed: main, develop, feat/*, bugfix/*, hotfix/*, chore/*, refactor/*, release/*")
+        fi
+      fi
+
+      # Get list of commits to validate
+      if [[ "$oldrev" == "$ZERO_SHA" ]]; then
+        commits=$(git rev-list "$newrev" --not --branches='*' 2>/dev/null || true)
+      else
+        commits=$(git rev-list "$oldrev".."$newrev" 2>/dev/null || true)
+      fi
+
+      # Validate each commit message
+      for sha in $commits; do
+        message=$(git log --format='%s' -n 1 "$sha")
+
+        # Skip merge commits and Initial commit
+        if [[ "$message" =~ ^Merge\  ]] || [[ "$message" == "Initial commit" ]]; then
+          continue
+        fi
+
+        if ! [[ "$message" =~ $COMMIT_REGEX ]]; then
+          short_sha="${sha:0:8}"
+          errors+=("Commit $short_sha: invalid message: $message")
+        fi
+      done
+    done
+
+    if [[ ${#errors[@]} -gt 0 ]]; then
+      echo ""
+      echo "=============================="
+      echo "  Push rejected by hook"
+      echo "=============================="
+      echo ""
+      for err in "${errors[@]}"; do
+        echo "  $err"
+      done
+      echo ""
+      echo "Expected commit format:"
+      echo "  [PROJ-123] feat: add new feature"
+      echo "  [BACK-456] fix(auth): resolve login issue"
+      echo ""
+      echo "Expected branch format:"
+      echo "  feat/my-feature"
+      echo "  bugfix/fix-something"
+      echo "  hotfix/urgent-fix"
+      echo ""
+      exit 1
+    fi

@@ -1,0 +1,11 @@
+name: p2bid-infra
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+description: p2bid infrastructure – Flux bootstrap via Pulumi
+backend:
+  # GCS bucket for Pulumi state. Create once:
+  #   gcloud storage buckets create gs://p2bid-infra-state \
+  #     --location=europe-west1 --uniform-bucket-level-access
+  url: gs://p2bid-staging-xc69rp-infra-state

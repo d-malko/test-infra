@@ -1,0 +1,24 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: gitlab-pg
+  namespace: databases
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.9-standard-bookworm
+  bootstrap:
+    initdb:
+      database: gitlabhq_production
+      owner: gitlab
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        - CREATE EXTENSION IF NOT EXISTS btree_gist;
+  # Cluster already bootstrapped manually — secret omitted intentionally.
+  # Credentials live in the CNPG-managed secret: databases/gitlab-pg-app
+  enableSuperuserAccess: false
+  # Retain PVCs on cluster deletion — never lose GitLab data.
+  backup:
+    retentionPolicy: "30d"
+  storage:
+    storageClass: local-path
+    size: 30Gi

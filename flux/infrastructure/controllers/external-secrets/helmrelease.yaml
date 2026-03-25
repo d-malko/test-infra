@@ -1,0 +1,55 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-secrets
+  namespace: external-secrets
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: external-secrets
+      version: "0.10.7"
+      sourceRef:
+        kind: HelmRepository
+        name: external-secrets
+        namespace: external-secrets
+      interval: 24h
+  install:
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    installCRDs: true
+
+    # Mount a projected K8s ServiceAccount token + GCP WIF credential config
+    # into the ESO controller pod. The Google auth library reads
+    # GOOGLE_APPLICATION_CREDENTIALS and exchanges the K8s token for a
+    # short-lived GCP access token via Workload Identity Federation.
+    extraVolumes:
+      - name: sa-token
+        projected:
+          sources:
+            - serviceAccountToken:
+                # Audience must match the WIF pool provider audience.
+                audience: "//iam.googleapis.com/projects/88022157757/locations/global/workloadIdentityPools/talos-staging/providers/talos"
+                expirationSeconds: 3600
+                path: token
+      - name: wif-credential-config
+        configMap:
+          name: gcp-wif-credential-config
+
+    extraVolumeMounts:
+      - name: sa-token
+        mountPath: /var/run/service-account
+        readOnly: true
+      - name: wif-credential-config
+        mountPath: /var/run/wif
+        readOnly: true
+
+    extraEnv:
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /var/run/wif/credential-config.json

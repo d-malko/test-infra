@@ -1,0 +1,163 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - "__main__.py"
+      - "Pulumi.yaml"
+      - "Pulumi.staging.yaml"
+      - "Pulumi.prod.yaml"
+      - "requirements.txt"
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: "Stack to deploy (staging | prod)"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, prod]
+
+concurrency:
+  group: pulumi-${{ github.event.inputs.stack || 'staging' }}
+  cancel-in-progress: false  # never cancel an in-flight deploy
+
+env:
+  PULUMI_STACK: ${{ github.event.inputs.stack || 'staging' }}
+
+jobs:
+  preview:
+    name: Preview (${{ github.event.inputs.stack || 'staging' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write    # required for WIF
+      pull-requests: write
+    outputs:
+      has_changes: ${{ steps.preview.outputs.has_changes }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -r requirements.txt
+
+      # Authenticate to GCP via Workload Identity Federation (no SA keys).
+      # GCP project and WIF provider are determined by the target stack.
+      - name: Authenticate to GCP (staging)
+        if: env.PULUMI_STACK == 'staging'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/88022157757/locations/global/workloadIdentityPools/github-actions/providers/github"
+          service_account: "pulumi-backend@p2bid-staging-xc69rp.iam.gserviceaccount.com"
+
+      - name: Authenticate to GCP (prod)
+        if: env.PULUMI_STACK == 'prod'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "${{ vars.GCP_WIF_PROVIDER_PROD }}"
+          service_account: "${{ vars.GCP_SA_PULUMI_PROD }}"
+
+      - name: Set Pulumi backend URL
+        run: |
+          if [[ "$PULUMI_STACK" == "staging" ]]; then
+            echo "PULUMI_BACKEND_URL=gs://p2bid-staging-xc69rp-infra-state" >> "$GITHUB_ENV"
+          else
+            echo "PULUMI_BACKEND_URL=${{ vars.GCP_STATE_BUCKET_PROD }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Pulumi preview
+        id: preview
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+        run: |
+          mkdir -p "${{ runner.temp }}"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "${{ runner.temp }}/kubeconfig"
+          chmod 600 "${{ runner.temp }}/kubeconfig"
+          export KUBECONFIG="${{ runner.temp }}/kubeconfig"
+
+          set +e
+          pulumi preview \
+            --stack "$PULUMI_STACK" \
+            --diff \
+            --non-interactive \
+            2>&1 | tee /tmp/preview.txt
+          EXIT_CODE=$?
+          set -e
+
+          if grep -qE '^\+|^~|^-' /tmp/preview.txt; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          cat /tmp/preview.txt
+          exit $EXIT_CODE
+
+  deploy:
+    name: Deploy (${{ github.event.inputs.stack || 'staging' }})
+    runs-on: ubuntu-latest
+    needs: preview
+    # prod requires approval via GitHub Environment protection rules
+    environment: ${{ github.event.inputs.stack || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write    # required for WIF
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -r requirements.txt
+
+      - name: Authenticate to GCP (staging)
+        if: env.PULUMI_STACK == 'staging'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/88022157757/locations/global/workloadIdentityPools/github-actions/providers/github"
+          service_account: "pulumi-backend@p2bid-staging-xc69rp.iam.gserviceaccount.com"
+
+      - name: Authenticate to GCP (prod)
+        if: env.PULUMI_STACK == 'prod'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "${{ vars.GCP_WIF_PROVIDER_PROD }}"
+          service_account: "${{ vars.GCP_SA_PULUMI_PROD }}"
+
+      - name: Set Pulumi backend URL
+        run: |
+          if [[ "$PULUMI_STACK" == "staging" ]]; then
+            echo "PULUMI_BACKEND_URL=gs://p2bid-staging-xc69rp-infra-state" >> "$GITHUB_ENV"
+          else
+            echo "PULUMI_BACKEND_URL=${{ vars.GCP_STATE_BUCKET_PROD }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Pulumi up
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+        run: |
+          mkdir -p "${{ runner.temp }}"
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "${{ runner.temp }}/kubeconfig"
+          chmod 600 "${{ runner.temp }}/kubeconfig"
+          export KUBECONFIG="${{ runner.temp }}/kubeconfig"
+
+          pulumi up \
+            --stack "$PULUMI_STACK" \
+            --yes \
+            --non-interactive \
+            --skip-preview
