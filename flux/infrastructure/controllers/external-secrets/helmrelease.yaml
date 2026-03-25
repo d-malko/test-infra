@@ -34,8 +34,8 @@ spec:
         projected:
           sources:
             - serviceAccountToken:
-                # Audience must match the WIF pool provider audience.
-                audience: "//iam.googleapis.com/projects/88022157757/locations/global/workloadIdentityPools/talos-staging/providers/talos"
+                # Audience must match the WIF pool provider's allowedAudiences.
+                audience: "https://oidc.p2bid.global/staging"
                 expirationSeconds: 3600
                 path: token
       - name: wif-credential-config
