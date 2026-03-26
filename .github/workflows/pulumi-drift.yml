@@ -79,15 +79,17 @@ jobs:
             2>&1 | tee /tmp/drift.txt
           set -e
 
-          # Detect meaningful changes (create/update/delete/replace)
-          if grep -qE '^\s*(\+\-|~|\+|-)\s+\S' /tmp/drift.txt; then
+          # Detect REAL drift: resource-level lines with a plan action (not just refresh).
+          # "(refresh)" means Pulumi synced its state — no change required.
+          # Real drift has "(update)", "(create)", "(delete)", or "(replace)".
+          if grep -qE '^\s*(\+\-|~|\+|-)\s+\S.*\((create|update|delete|replace)\)' /tmp/drift.txt; then
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
           else
             echo "drift_detected=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Extract changed resource lines and annotate with emoji
-          grep -E '^\s*(\+\-|~|\+|-)\s+\S' /tmp/drift.txt \
+          # Extract only real plan-action resource lines (skip refresh-only and property noise)
+          grep -E '^\s*(\+\-|~|\+|-)\s+\S.*\((create|update|delete|replace)\)' /tmp/drift.txt \
             | sed \
                 -e 's/^[[:space:]]*+-/🔄 REPLACE/' \
                 -e 's/^[[:space:]]*~/🟡 UPDATE /' \
