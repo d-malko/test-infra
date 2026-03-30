@@ -86,6 +86,7 @@ Project: `$GCP_PROJECT`
 | `${CLUSTER_NAME}-grafana-admin-user` | Grafana admin username (e.g. `admin`) | ESO → `monitoring` namespace |
 | `${CLUSTER_NAME}-grafana-admin-password` | Grafana admin password | ESO → `monitoring` namespace |
 | `${CLUSTER_NAME}-telegram-bot-token` | Telegram bot token from @BotFather | ESO → `monitoring` namespace (Alertmanager) |
+| `${CLUSTER_NAME}-telegram-chat-id` | Telegram chat/group ID (numeric, e.g. `-1001234567890`) | ESO → `monitoring` namespace (Alertmanager) |
 | `${CLUSTER_NAME}-grafana-google-oauth` | JSON `{"client_id":"…","client_secret":"…"}` from Google Cloud Console | ESO → `monitoring` namespace (Grafana OAuth) |
 
 To add or update a secret:
