@@ -83,6 +83,10 @@ Project: `$GCP_PROJECT`
 | `${CLUSTER_NAME}-cloudflare-api-token` | Cloudflare DNS API token | ESO → `cert-manager` namespace |
 | `${CLUSTER_NAME}-cloudflare-pages-token` | Cloudflare Pages deploy token | GitHub Actions |
 | `${CLUSTER_NAME}-pulumi-passphrase` | Pulumi stack encryption passphrase | Reference / onboarding |
+| `${CLUSTER_NAME}-grafana-admin-user` | Grafana admin username (e.g. `admin`) | ESO → `monitoring` namespace |
+| `${CLUSTER_NAME}-grafana-admin-password` | Grafana admin password | ESO → `monitoring` namespace |
+| `${CLUSTER_NAME}-telegram-bot-token` | Telegram bot token from @BotFather | ESO → `monitoring` namespace (Alertmanager) |
+| `${CLUSTER_NAME}-grafana-google-oauth` | JSON `{"client_id":"…","client_secret":"…"}` from Google Cloud Console | ESO → `monitoring` namespace (Grafana OAuth) |
 
 To add or update a secret:
 ```bash

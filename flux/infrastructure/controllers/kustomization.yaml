@@ -8,3 +8,4 @@ resources:
   - local-path-provisioner
   - gateway-api-crds
   - cilium-config
+  - monitoring

@@ -1,0 +1,38 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: telegram
+  namespace: monitoring
+  labels:
+    alertmanagerConfig: telegram
+spec:
+  route:
+    receiver: telegram
+    groupBy: ["alertname", "namespace"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    matchers:
+      - name: severity
+        matchType: =~
+        value: "warning|critical"
+
+  receivers:
+    - name: telegram
+      telegramConfigs:
+        - botToken:
+            # Secret created by externalsecret-telegram.yaml via GCP Secret Manager
+            name: alertmanager-telegram-secret
+            key: bot-token
+          # TODO: set real chatID — add @userinfobot to your Telegram group to get it.
+          # Group/channel IDs are negative (e.g. -1001234567890).
+          chatID: 0   # TODO: replace with real Telegram chat ID
+          parseMode: HTML
+          message: |-
+            {{ range .Alerts }}
+            <b>{{ .Labels.alertname }}</b> [{{ .Labels.severity | toUpper }}]
+            {{ if .Labels.namespace }}<i>ns: {{ .Labels.namespace }}</i>{{ end }}
+            {{ if .Annotations.summary }}{{ .Annotations.summary }}{{ end }}
+            {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
+            {{ end }}
+          sendResolved: true
