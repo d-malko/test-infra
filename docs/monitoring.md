@@ -24,13 +24,38 @@ All deployed via `kube-prometheus-stack` (Helm) + `loki` + `promtail` charts, ma
 
 **URL:** `https://grafana.p2bid.global`
 
-Credentials are in GCP Secret Manager:
+**Login:** Use your `@p2bid.global` Google account via the **Sign in with Google** button.
+
+Admin credentials (fallback) are in GCP Secret Manager:
 ```bash
 gcloud secrets versions access latest --secret="p2bid-staging-grafana-admin-user" --project="p2bid-staging-xc69rp"
 gcloud secrets versions access latest --secret="p2bid-staging-grafana-admin-password" --project="p2bid-staging-xc69rp"
 ```
 
 Loki is pre-configured as a datasource — use **Explore → Loki** to query logs.
+
+### Google OAuth setup
+
+OAuth credentials live in GCP Secret Manager as a JSON secret:
+```bash
+# Check current value
+gcloud secrets versions access latest \
+  --secret="p2bid-staging-grafana-google-oauth" --project="p2bid-staging-xc69rp"
+
+# Update (JSON format: {"client_id":"...","client_secret":"..."})
+echo -n '{"client_id":"YOUR_ID.apps.googleusercontent.com","client_secret":"YOUR_SECRET"}' | \
+  gcloud secrets versions add p2bid-staging-grafana-google-oauth \
+    --project="p2bid-staging-xc69rp" --data-file=-
+```
+
+The Google OAuth client must have this redirect URI:
+```
+https://grafana.p2bid.global/login/google
+```
+
+Once OAuth is confirmed working, uncomment `disable_login_form: true` in
+[helmrelease-kube-prometheus-stack.yaml](../flux/infrastructure/controllers/monitoring/helmrelease-kube-prometheus-stack.yaml)
+to remove the username/password form.
 
 ---
 
