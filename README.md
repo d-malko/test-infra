@@ -13,14 +13,15 @@ GitHub ($GITHUB_REPO)
         │     └── GCS backend        gs://$GCS_BUCKET
         │
         └── Flux GitOps              — reconciles everything else from flux/
-              ├── infrastructure/controllers/   cert-manager, ESO, CNPG, Flagger, Cilium, …
-              ├── infrastructure/configs/       ClusterSecretStore, cert issuers, gateway
+              ├── infrastructure/controllers/   cert-manager, ESO, CNPG, Flagger, Cilium, monitoring, …
+              ├── infrastructure/configs/       ClusterSecretStore, cert issuers, gateway, monitoring
               └── apps/                         GitLab, GitLab Runner, databases
 ```
 
 **Cluster:** Single-node Talos Linux (see `CLUSTER_IP` in [bootstrap vars](docs/bootstrap.md#variables))
 **Secrets:** GCP Secret Manager via External Secrets Operator (WIF — no SA keys)
 **DNS/TLS:** Cloudflare + cert-manager (Let's Encrypt)
+**Monitoring:** Prometheus + Grafana + Alertmanager + Loki + Promtail → `grafana.p2bid.global`
 **Stacks:** `staging` (active) · `prod` (not yet provisioned)
 
 ---
@@ -42,8 +43,8 @@ p2bid-infra/
 ├── flux/                        # Everything Flux reconciles
 │   ├── clusters/staging/        # Root kustomizations (entry point for Flux)
 │   ├── infrastructure/
-│   │   ├── controllers/         # Helm releases: cert-manager, ESO, CNPG, Flagger, …
-│   │   └── configs/             # ClusterSecretStore, cert issuers, gateway, …
+│   │   ├── controllers/         # Helm releases: cert-manager, ESO, CNPG, Flagger, monitoring, …
+│   │   └── configs/             # ClusterSecretStore, cert issuers, gateway, monitoring, …
 │   └── apps/
 │       ├── gitlab/              # GitLab CE HelmRelease
 │       ├── gitlab-runner/       # GitLab Runner + ExternalSecrets
@@ -101,3 +102,4 @@ With Claude Code, run `/setup` to automate the above.
 | [docs/secrets-auth.md](docs/secrets-auth.md) | Authorization map, WIF pools, all secrets reference |
 | [docs/operations.md](docs/operations.md) | Add a new app, JWKS rotation, GitHub Actions, Flux reconciliation, Claude Code commands |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Flux, HelmRelease, ESO, WIF, Pulumi state issues |
+| [docs/monitoring.md](docs/monitoring.md) | Monitoring stack setup, Grafana access, Telegram alerts, Loki log queries |
