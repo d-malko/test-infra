@@ -8,7 +8,7 @@ config = pulumi.Config()
 
 env: str = config.get("environment") or "staging"
 git_url: str = (
-    config.get("git_url") or "https://github.com/serhii-p2bid/p2bid-infra.git"
+    config.get("git_url") or "ssh://git@github.com/P2Bid/p2bid-infra.git"
 )
 git_branch: str = config.get("git_branch") or "main"
 cluster_path: str = config.get("cluster_path") or f"flux/clusters/{env}"

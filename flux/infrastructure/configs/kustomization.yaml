@@ -4,5 +4,4 @@ resources:
   - secret-store
   - cert-issuers
   - gateway
-  - grafana-google-oauth
   - monitoring

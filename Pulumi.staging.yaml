@@ -1,7 +1,7 @@
 config:
   # Kubernetes provider uses KUBECONFIG env var (set via talosctl kubeconfig).
   p2bid-infra:environment: staging
-  p2bid-infra:git_url: ssh://git@github.com/serhii-p2bid/p2bid-infra.git
+  p2bid-infra:git_url: ssh://git@github.com/P2Bid/p2bid-infra.git
   p2bid-infra:git_branch: main
   p2bid-infra:cluster_path: flux/clusters/staging
   p2bid-infra:git_ssh_key:
