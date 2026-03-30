@@ -24,10 +24,9 @@ spec:
             # Secret created by externalsecret-telegram.yaml via GCP Secret Manager
             name: alertmanager-telegram-secret
             key: bot-token
-          # chatID is not a secret (just a channel/group identifier).
-          # Get it by adding @userinfobot to your group, or from the Telegram API.
+          # TODO: set real chatID — add @userinfobot to your Telegram group to get it.
           # Group/channel IDs are negative (e.g. -1001234567890).
-          chatID: -1001234567890   # REPLACE with your Telegram chat ID
+          chatID: 0   # TODO: replace with real Telegram chat ID
           parseMode: HTML
           message: |-
             {{ range .Alerts }}

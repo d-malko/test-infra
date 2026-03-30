@@ -2,6 +2,8 @@
 
 Observability stack deployed to the `monitoring` namespace via Flux.
 
+> **TODO:** Set real Telegram `chatID` in [alertmanagerconfig.yaml](../flux/infrastructure/configs/monitoring/alertmanagerconfig.yaml) — currently `0` (alerts won't be delivered). Add [@userinfobot](https://t.me/userinfobot) to your group to get the ID, then update the file and commit.
+
 ---
 
 ## Stack
