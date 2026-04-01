@@ -26,6 +26,8 @@ spec:
     - name: tempo
       namespace: monitoring
   values:
+    mode: deployment
+
     image:
       # contrib distribution required for the redaction processor
       repository: otel/opentelemetry-collector-contrib
