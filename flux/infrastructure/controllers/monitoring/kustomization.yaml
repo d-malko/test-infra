@@ -10,3 +10,9 @@ resources:
   - helmrelease-kube-prometheus-stack.yaml
   - helmrelease-loki.yaml
   - helmrelease-promtail.yaml
+  - helmrepository-opentelemetry.yaml
+  - externalsecret-otel-collector.yaml
+  - helmrelease-tempo.yaml
+  - helmrelease-otel-collector.yaml
+  - networkpolicy-tempo.yaml
+  - networkpolicy-otel-collector.yaml

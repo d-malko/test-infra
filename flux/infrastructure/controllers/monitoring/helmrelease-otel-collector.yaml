@@ -1,0 +1,121 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: opentelemetry-collector
+      version: "0.*"
+      sourceRef:
+        kind: HelmRepository
+        name: open-telemetry
+        namespace: monitoring
+      interval: 24h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  timeout: 10m
+  # Wait for Tempo to be ready before deploying the Collector
+  dependsOn:
+    - name: tempo
+      namespace: monitoring
+  values:
+    image:
+      # contrib distribution required for the redaction processor
+      repository: otel/opentelemetry-collector-contrib
+
+    resources:
+      requests:
+        cpu: 50m
+        # 128Mi floor: memory_limiter triggers at 80% of limit (409Mi), batch
+        # processor can buffer up to 10k spans in-flight before flushing
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+    ports:
+      otlp:
+        enabled: true
+        containerPort: 4317
+        servicePort: 4317
+      otlp-http:
+        enabled: true
+        containerPort: 4318
+        servicePort: 4318
+      # Disable unused receivers — reduce attack surface
+      jaeger-compact:
+        enabled: false
+      jaeger-thrift:
+        enabled: false
+      jaeger-grpc:
+        enabled: false
+      zipkin:
+        enabled: false
+
+    config:
+      extensions:
+        health_check:
+          endpoint: ${env:MY_POD_IP}:13133
+
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: ${env:MY_POD_IP}:4317
+            # HTTP endpoint used by Cloudflare Workers (see IF-66 for public exposure)
+            http:
+              endpoint: ${env:MY_POD_IP}:4318
+
+      processors:
+        memory_limiter:
+          check_interval: 5s
+          limit_percentage: 80
+          spike_limit_percentage: 25
+
+        batch:
+          send_batch_size: 10000
+          timeout: 10s
+
+        # Allowlist-based redaction — only explicitly listed keys reach Tempo storage.
+        # http.url is intentionally excluded: full URLs carry query-param tokens/OAuth codes.
+        redaction:
+          allow_all_keys: false
+          allowed_keys:
+            - http.method
+            - http.route
+            - http.status_code
+            - url.path
+            - db.system
+            - db.operation
+            - span.kind
+            - service.name
+            - service.version
+            - error
+            - error.message
+            - user.role
+            - tenant.id
+          blocked_values:
+            - "(?i)authorization"
+            - "(?i)bearer\\s+[a-z0-9\\-._~+/]+"
+            - "(?i)password"
+            - "[0-9]{13,19}"
+
+      exporters:
+        otlp:
+          endpoint: tempo.monitoring.svc.cluster.local:4317
+          tls:
+            insecure: true
+
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, redaction, batch]
+            exporters: [otlp]

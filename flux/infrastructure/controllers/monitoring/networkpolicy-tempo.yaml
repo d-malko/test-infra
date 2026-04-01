@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tempo-ingress
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tempo
+  policyTypes:
+    - Ingress
+  ingress:
+    # OTLP gRPC (4317) and HTTP (4318) — only the OTel Collector may push traces.
+    # All other pods (including compromised workloads) are blocked from writing
+    # directly to Tempo, which would bypass the redaction processor.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    # Tempo query frontend + metrics (3200) — Grafana reads traces, Prometheus scrapes metrics.
+    # Both use port 3200 (tempo-prom-metrics in the chart Service).
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 3200

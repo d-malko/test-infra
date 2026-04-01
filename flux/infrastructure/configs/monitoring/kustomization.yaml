@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - alertmanagerconfig.yaml
   - grafana-httproute.yaml
+  # otel-collector-httproute.yaml — deferred to IF-66 (requires Cloudflare Access auth first)

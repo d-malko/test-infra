@@ -1,0 +1,25 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: otel-collector
+  namespace: monitoring
+spec:
+  parentRefs:
+    - name: main-gateway
+      namespace: gateway
+      sectionName: https-wildcard
+  hostnames:
+    - "otel.p2bid.global"
+  rules:
+    # Only expose the OTLP HTTP endpoint — used by Cloudflare Workers.
+    # Auth: bearer token validated by the gateway / Cloudflare Access service token.
+    # Rate limit and payload size enforced at the WAF layer (see IF-66).
+    - matches:
+        - path:
+            type: Exact
+            value: /v1/traces
+          method: POST
+      backendRefs:
+        - name: otel-collector-opentelemetry-collector
+          namespace: monitoring
+          port: 4318

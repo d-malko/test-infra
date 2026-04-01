@@ -5,6 +5,7 @@ Infrastructure-as-Code repository using **Pulumi (Python)** for the p2bid projec
 
 ## General Rules
 - Never add `Co-Authored-By: Claude` or any AI authorship trailer to git commits.
+- Never add `🤖 Generated with [Claude Code](https://claude.ai/claude-code)` or any "generated with" footer to git commit messages or PR descriptions.
 - Before committing any infrastructure code changes, run `/simplify` to review for reuse, quality, and efficiency.
 
 ## Skills — Automatic Activation
@@ -28,6 +29,14 @@ Apply the following skills automatically based on context, without waiting for t
 ## MCP Servers
 - **context7** — Use for up-to-date Pulumi/cloud provider docs. Always resolve library IDs before querying.
 - **playwright** — Use for verifying deployed endpoints, scraping cloud console pages, or browser-based validation.
+- **kubernetes** — Read-only access to the cluster. Always use instead of asking the user to run kubectl.
+  - Use when: checking pod status, logs, node health, events, deployments, namespaces, or any K8s resource
+  - Use for: diagnosing CrashLoop, Pending, OOMKill, resource pressure, Flux reconciliation issues
+  - Constraint: read-only — no create, delete, or patch operations available
+- **jira** — Use for reading and managing Jira issues in the p2bid project.
+  - Credentials are configured in `.mcp.json` (JIRA_HOST, JIRA_EMAIL, JIRA_API_TOKEN) — authentication is automatic via the MCP server env.
+  - If a Jira tool returns `unauthorized`, check `.mcp.json` for the correct credentials before asking the user.
+  - Project key: `IF` (Infrastructure) — use this prefix for all issue lookups (e.g. `IF-61`).
 
 ---
 

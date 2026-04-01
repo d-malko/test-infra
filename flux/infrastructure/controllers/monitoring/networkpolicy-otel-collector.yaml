@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-ingress
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # gRPC (4317) + HTTP (4318) + health-check (13133).
+    # No from: selector — application pods sending traces live in other namespaces.
+    - ports:
+        - port: 4317
+        - port: 4318
+        - port: 13133
+  egress:
+    # Forward traces to Tempo gRPC receiver only
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tempo
+      ports:
+        - port: 4317
+    # CoreDNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
