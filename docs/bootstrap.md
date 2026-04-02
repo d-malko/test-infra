@@ -35,13 +35,13 @@ export SA_PULUMI="pulumi-backend@${GCP_PROJECT}.iam.gserviceaccount.com"
 export SA_ESO="ext-secrets-operator@${GCP_PROJECT}.iam.gserviceaccount.com"
 
 # Cluster
-export CLUSTER_NAME="<cluster-name>"               # e.g. p2bid-staging
+export CLUSTER_NAME="<cluster-name>"               # e.g. test-staging
 export CLUSTER_IP="<server-ip>"                    # public IP of the Talos node
 export TALOSCONFIG="~/.talos/${CLUSTER_NAME}/talosconfig"
 
 # GitHub
 export GITHUB_ORG="<github-org>"                   # e.g. MyOrg
-export GITHUB_REPO="${GITHUB_ORG}/p2bid-infra"
+export GITHUB_REPO="${GITHUB_ORG}/test-infra"
 
 # Cloudflare
 export CF_ACCOUNT_ID="<cloudflare-account-id>"     # Cloudflare dashboard → top-right
@@ -255,11 +255,11 @@ Now go back and complete **Step 5**.
 ## Step 7 — SSH Key for Flux
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_flux_p2bid -N "" -C "flux@p2bid-infra"
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_flux_test -N "" -C "flux@test-infra"
 
 # Add the PUBLIC key as a read-only Deploy Key on GitHub:
 # https://github.com/${GITHUB_REPO}/settings/keys
-cat ~/.ssh/id_ed25519_flux_p2bid.pub
+cat ~/.ssh/id_ed25519_flux_test.pub
 ```
 
 ---
@@ -268,7 +268,7 @@ cat ~/.ssh/id_ed25519_flux_p2bid.pub
 
 ```bash
 git clone "git@github.com:${GITHUB_REPO}.git"
-cd p2bid-infra
+cd test-infra
 uv sync
 
 gcloud auth login
@@ -284,7 +284,7 @@ python3 - <<'EOF'
 import pulumi.automation as auto, pathlib, os
 
 stack = auto.select_stack(stack_name=os.environ["PULUMI_STACK"], work_dir=".")
-key = pathlib.Path("~/.ssh/id_ed25519_flux_p2bid").expanduser().read_text()
+key = pathlib.Path("~/.ssh/id_ed25519_flux_test").expanduser().read_text()
 stack.set_config("git_ssh_key", auto.ConfigValue(value=key, secret=True))
 print("SSH key stored.")
 EOF

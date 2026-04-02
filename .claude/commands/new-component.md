@@ -35,7 +35,7 @@ class <ComponentName>(ComponentResource):
         args: <ComponentName>Args,
         opts: Optional[ResourceOptions] = None,
     ) -> None:
-        super().__init__("p2bid:infra:<ComponentName>", name, None, opts)
+        super().__init__("test:infra:<ComponentName>", name, None, opts)
 
         # TODO: create child resources with opts=ResourceOptions(parent=self)
 

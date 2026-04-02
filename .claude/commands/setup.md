@@ -1,4 +1,4 @@
-Bootstrap a freshly cloned p2bid-infra repository on a new machine.
+Bootstrap a freshly cloned test-infra repository on a new machine.
 
 Run the following steps in order, check each one succeeds before continuing, and report clearly if anything fails.
 

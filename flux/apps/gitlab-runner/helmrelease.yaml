@@ -21,7 +21,7 @@ spec:
     remediation:
       retries: 2
   values:
-    gitlabUrl: https://gitlab.p2bid.global
+    gitlabUrl: https://gitlab.test.global
     concurrent: 4
     checkInterval: 30
 

@@ -13,7 +13,7 @@ Scan all `.py` files in `infra/` and `__main__.py`. Apply `pulumi-best-practices
 - Missing `register_outputs()` calls
 - `.get()` calls on Outputs (forbidden)
 - Missing type annotations on infra functions
-- Naming violations (must follow `p2bid-<env>-<purpose>`)
+- Naming violations (must follow `test-<env>-<purpose>`)
 - Resources missing common tags
 
 **Subagent 2 — Security audit:**

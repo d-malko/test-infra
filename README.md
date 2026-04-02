@@ -1,6 +1,6 @@
-# p2bid-infra
+# test-infra
 
-Infrastructure-as-Code for the **p2bid** project — [Pulumi](https://www.pulumi.com/) (Python) managing Flux GitOps bootstrap on a [Talos Linux](https://www.talos.dev/) Kubernetes cluster.
+Infrastructure-as-Code for the **test** project — [Pulumi](https://www.pulumi.com/) (Python) managing Flux GitOps bootstrap on a [Talos Linux](https://www.talos.dev/) Kubernetes cluster.
 
 ---
 
@@ -21,7 +21,7 @@ GitHub ($GITHUB_REPO)
 **Cluster:** Single-node Talos Linux (see `CLUSTER_IP` in [bootstrap vars](docs/bootstrap.md#variables))
 **Secrets:** GCP Secret Manager via External Secrets Operator (WIF — no SA keys)
 **DNS/TLS:** Cloudflare + cert-manager (Let's Encrypt)
-**Monitoring:** Prometheus + Grafana + Alertmanager + Loki + Promtail → `grafana.p2bid.global`
+**Monitoring:** Prometheus + Grafana + Alertmanager + Loki + Promtail → `grafana.test.global`
 **Stacks:** `staging` (active) · `prod` (not yet provisioned)
 
 ---
@@ -29,7 +29,7 @@ GitHub ($GITHUB_REPO)
 ## Repository Structure
 
 ```
-p2bid-infra/
+test-infra/
 ├── Pulumi.yaml
 ├── Pulumi.staging.yaml          # Stack config (git URL, SSH key secret, cluster path)
 ├── __main__.py                  # Thin entrypoint → infra/
@@ -76,7 +76,7 @@ If the cluster and all accounts already exist, get running locally:
 
 ```bash
 git clone "git@github.com:${GITHUB_REPO}.git"
-cd p2bid-infra
+cd test-infra
 uv sync
 
 gcloud auth login

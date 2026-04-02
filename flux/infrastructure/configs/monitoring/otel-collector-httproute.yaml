@@ -9,7 +9,7 @@ spec:
       namespace: gateway
       sectionName: https-wildcard
   hostnames:
-    - "otel.p2bid.global"
+    - "otel.test.global"
   rules:
     # Only expose the OTLP HTTP endpoint — used by Cloudflare Workers.
     # Auth: bearer token validated by the gateway / Cloudflare Access service token.

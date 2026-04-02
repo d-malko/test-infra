@@ -25,13 +25,13 @@ spec:
     global:
       edition: ce
       hosts:
-        domain: p2bid.global
+        domain: test.global
         gitlab:
-          name: gitlab.p2bid.global
+          name: gitlab.test.global
         registry:
-          name: glcr.p2bid.global
+          name: glcr.test.global
         kas:
-          name: glkas.p2bid.global
+          name: glkas.test.global
         https: true
 
       ingress:

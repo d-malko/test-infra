@@ -17,55 +17,55 @@ spec:
     - name: https-wildcard
       protocol: HTTPS
       port: 443
-      hostname: "*.p2bid.global"
+      hostname: "*.test.global"
       tls:
         mode: Terminate
         certificateRefs:
           - kind: Secret
-            name: wildcard-p2bid-global-tls
+            name: wildcard-test-global-tls
       allowedRoutes:
         namespaces:
           from: All
     - name: gitlab-web
       protocol: HTTPS
       port: 443
-      hostname: "gitlab.p2bid.global"
+      hostname: "gitlab.test.global"
       tls:
         mode: Terminate
         certificateRefs:
           - kind: Secret
-            name: wildcard-p2bid-global-tls
+            name: wildcard-test-global-tls
       allowedRoutes:
         namespaces:
           from: All
     - name: registry-web
       protocol: HTTPS
       port: 443
-      hostname: "glcr.p2bid.global"
+      hostname: "glcr.test.global"
       tls:
         mode: Terminate
         certificateRefs:
           - kind: Secret
-            name: wildcard-p2bid-global-tls
+            name: wildcard-test-global-tls
       allowedRoutes:
         namespaces:
           from: All
     - name: kas-web
       protocol: HTTPS
       port: 443
-      hostname: "glkas.p2bid.global"
+      hostname: "glkas.test.global"
       tls:
         mode: Terminate
         certificateRefs:
           - kind: Secret
-            name: wildcard-p2bid-global-tls
+            name: wildcard-test-global-tls
       allowedRoutes:
         namespaces:
           from: All
     - name: http
       protocol: HTTP
       port: 80
-      hostname: "*.p2bid.global"
+      hostname: "*.test.global"
       allowedRoutes:
         namespaces:
           from: All

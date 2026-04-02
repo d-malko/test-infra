@@ -9,7 +9,7 @@ spec:
       namespace: gateway
       sectionName: https-wildcard
   hostnames:
-    - "grafana.p2bid.global"
+    - "grafana.test.global"
   rules:
     - matches:
         - path:

@@ -1,7 +1,7 @@
-# p2bid-infra — Claude Code Instructions
+# test-infra — Claude Code Instructions
 
 ## Project Overview
-Infrastructure-as-Code repository using **Pulumi (Python)** for the p2bid project.
+Infrastructure-as-Code repository using **Pulumi (Python)** for the test project.
 
 ## General Rules
 - Never add `Co-Authored-By: Claude` or any AI authorship trailer to git commits.
@@ -33,7 +33,7 @@ Apply the following skills automatically based on context, without waiting for t
   - Use when: checking pod status, logs, node health, events, deployments, namespaces, or any K8s resource
   - Use for: diagnosing CrashLoop, Pending, OOMKill, resource pressure, Flux reconciliation issues
   - Constraint: read-only — no create, delete, or patch operations available
-- **jira** — Use for reading and managing Jira issues in the p2bid project.
+- **jira** — Use for reading and managing Jira issues in the test project.
   - Credentials are configured in `.mcp.json` (JIRA_HOST, JIRA_EMAIL, JIRA_API_TOKEN) — authentication is automatic via the MCP server env.
   - If a Jira tool returns `unauthorized`, check `.mcp.json` for the correct credentials before asking the user.
   - Project key: `IF` (Infrastructure) — use this prefix for all issue lookups (e.g. `IF-61`).
@@ -43,7 +43,7 @@ Apply the following skills automatically based on context, without waiting for t
 ## Stack & Project Structure
 
 ```
-p2bid-infra/
+test-infra/
 ├── Pulumi.yaml              # Project metadata (runtime: python)
 ├── Pulumi.staging.yaml      # Staging stack config
 ├── Pulumi.prod.yaml         # Prod stack config
@@ -75,15 +75,15 @@ p2bid-infra/
 ## Naming & Tagging Conventions
 
 ```python
-# Resource names: p2bid-<env>-<purpose>
-name = f"p2bid-{env}-api-db"
+# Resource names: test-<env>-<purpose>
+name = f"test-{env}-api-db"
 
 # Always tag every resource
 common_tags = {
-    "Project": "p2bid",
+    "Project": "test",
     "Environment": env,
     "ManagedBy": "pulumi",
-    "Repository": "p2bid-infra",
+    "Repository": "test-infra",
 }
 ```
 

@@ -6,4 +6,4 @@ metadata:
 data:
   # GCP project that holds secrets in Secret Manager.
   # Set this to your actual GCP project ID.
-  gcp_project_id: "p2bid-staging-xc69rp"
+  gcp_project_id: "test-staging-xc69rp"

@@ -21,4 +21,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy cloudflare/oidc --project-name=p2bid-oidc --branch=main
+          command: pages deploy cloudflare/oidc --project-name=test-oidc --branch=main

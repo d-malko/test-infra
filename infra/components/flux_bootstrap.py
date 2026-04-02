@@ -6,7 +6,7 @@ import pulumi
 import pulumi_kubernetes as kubernetes
 
 _FLUX_NAMESPACE = "flux-system"
-_GIT_REPO_NAME = "p2bid-infra"
+_GIT_REPO_NAME = "test-infra"
 _GIT_SECRET_NAME = "flux-git-credentials"
 
 # Official Flux install manifests — no pre-install hooks (safe on Talos + Cilium).
@@ -49,7 +49,7 @@ class FluxBootstrap(pulumi.ComponentResource):
         args: FluxBootstrapArgs,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
-        super().__init__("p2bid:components:FluxBootstrap", name, {}, opts)
+        super().__init__("test:components:FluxBootstrap", name, {}, opts)
 
         # ── Flux controllers via official install manifests ──────────────────
         # Uses the official GitHub release manifest — no pre-install hook jobs

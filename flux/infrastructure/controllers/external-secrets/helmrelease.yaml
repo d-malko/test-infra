@@ -35,7 +35,7 @@ spec:
           sources:
             - serviceAccountToken:
                 # Audience must match the WIF pool provider's allowedAudiences.
-                audience: "https://oidc.p2bid.global/staging"
+                audience: "https://oidc.test.global/staging"
                 expirationSeconds: 3600
                 path: token
       - name: wif-credential-config

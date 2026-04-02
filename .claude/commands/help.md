@@ -4,7 +4,7 @@ Print the following exactly:
 
 ---
 
-## p2bid-infra — Available Commands
+## test-infra — Available Commands
 
 | Command | Usage | Description |
 |---------|-------|-------------|

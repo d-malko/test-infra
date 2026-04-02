@@ -11,7 +11,7 @@ spec:
   timeout: 5m
   sourceRef:
     kind: GitRepository
-    name: p2bid-infra
+    name: test-infra
   path: ./flux/infrastructure/configs
   prune: true
   wait: true

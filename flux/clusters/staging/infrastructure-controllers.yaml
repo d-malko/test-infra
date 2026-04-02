@@ -9,7 +9,7 @@ spec:
   timeout: 10m
   sourceRef:
     kind: GitRepository
-    name: p2bid-infra
+    name: test-infra
   path: ./flux/infrastructure/controllers
   prune: true
   wait: true

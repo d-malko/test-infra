@@ -1,4 +1,4 @@
-"""p2bid-infra — Pulumi entrypoint.
+"""test-infra — Pulumi entrypoint.
 
 Thin dispatcher: delegates to infra modules.
 Pulumi scope: Flux bootstrap only.

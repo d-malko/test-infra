@@ -37,7 +37,7 @@ Unit tests per module are independent — they run in parallel subagents. Integr
 Enforces [Conventional Commits](https://www.conventionalcommits.org/) with IaC-specific types (`feat(infra):`, `fix(infra):`, `refactor(infra):`). Suggests `/simplify` first if Python files are staged — keeps infra code lean before it hits git history. No `Co-Authored-By` trailers.
 
 ### `/new-component`
-Scaffolds a typed `ComponentResource` with the correct structure from the start: proper type URN (`p2bid:infra:<Name>`), typed `Args` class, `ResourceOptions(parent=self)` on all children, `register_outputs()`. Fetches live Pulumi docs via Context7 so the generated code matches the current API.
+Scaffolds a typed `ComponentResource` with the correct structure from the start: proper type URN (`test:infra:<Name>`), typed `Args` class, `ResourceOptions(parent=self)` on all children, `register_outputs()`. Fetches live Pulumi docs via Context7 so the generated code matches the current API.
 
 ### `/new-stack`
 Copies config from `staging` as baseline so new stacks start with sensible defaults rather than empty config. Reminds about secrets — `pulumi config set --secret` — before the user commits anything.

@@ -43,7 +43,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: "projects/88022157757/locations/global/workloadIdentityPools/github-actions/providers/github"
-          service_account: "pulumi-backend@p2bid-staging-xc69rp.iam.gserviceaccount.com"
+          service_account: "pulumi-backend@test-staging-xc69rp.iam.gserviceaccount.com"
 
       - name: Authenticate to GCP (prod)
         if: env.PULUMI_STACK == 'prod'
@@ -55,7 +55,7 @@ jobs:
       - name: Set Pulumi backend URL
         run: |
           if [[ "$PULUMI_STACK" == "staging" ]]; then
-            echo "PULUMI_BACKEND_URL=gs://p2bid-staging-xc69rp-infra-state" >> "$GITHUB_ENV"
+            echo "PULUMI_BACKEND_URL=gs://test-staging-xc69rp-infra-state" >> "$GITHUB_ENV"
           else
             echo "PULUMI_BACKEND_URL=${{ vars.GCP_STATE_BUCKET_PROD }}" >> "$GITHUB_ENV"
           fi

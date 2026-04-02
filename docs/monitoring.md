@@ -12,7 +12,7 @@ Observability stack deployed to the `monitoring` namespace via Flux.
 |-----------|---------|
 | **Prometheus** | Metrics collection & storage (30d retention, 20Gi PVC) |
 | **Alertmanager** | Alert routing → Telegram |
-| **Grafana** | Dashboards + log explorer — `https://grafana.p2bid.global` |
+| **Grafana** | Dashboards + log explorer — `https://grafana.test.global` |
 | **node-exporter** | Node-level CPU/memory/disk/network metrics |
 | **kube-state-metrics** | Kubernetes object state metrics |
 | **Loki** | Log aggregation (single-binary, 7d retention, 20Gi PVC) |
@@ -24,14 +24,14 @@ All deployed via `kube-prometheus-stack` (Helm) + `loki` + `promtail` charts, ma
 
 ## Grafana
 
-**URL:** `https://grafana.p2bid.global`
+**URL:** `https://grafana.test.global`
 
-**Login:** Use your `@p2bid.global` Google account via the **Sign in with Google** button.
+**Login:** Use your `@test.global` Google account via the **Sign in with Google** button.
 
 Admin credentials (fallback) are in GCP Secret Manager:
 ```bash
-gcloud secrets versions access latest --secret="p2bid-staging-grafana-admin-user" --project="p2bid-staging-xc69rp"
-gcloud secrets versions access latest --secret="p2bid-staging-grafana-admin-password" --project="p2bid-staging-xc69rp"
+gcloud secrets versions access latest --secret="test-staging-grafana-admin-user" --project="test-staging-xc69rp"
+gcloud secrets versions access latest --secret="test-staging-grafana-admin-password" --project="test-staging-xc69rp"
 ```
 
 Loki is pre-configured as a datasource — use **Explore → Loki** to query logs.
@@ -42,17 +42,17 @@ OAuth credentials live in GCP Secret Manager as a JSON secret:
 ```bash
 # Check current value
 gcloud secrets versions access latest \
-  --secret="p2bid-staging-grafana-google-oauth" --project="p2bid-staging-xc69rp"
+  --secret="test-staging-grafana-google-oauth" --project="test-staging-xc69rp"
 
 # Update (JSON format: {"client_id":"...","client_secret":"..."})
 echo -n '{"client_id":"YOUR_ID.apps.googleusercontent.com","client_secret":"YOUR_SECRET"}' | \
-  gcloud secrets versions add p2bid-staging-grafana-google-oauth \
-    --project="p2bid-staging-xc69rp" --data-file=-
+  gcloud secrets versions add test-staging-grafana-google-oauth \
+    --project="test-staging-xc69rp" --data-file=-
 ```
 
 The Google OAuth client must have this redirect URI:
 ```
-https://grafana.p2bid.global/login/google
+https://grafana.test.global/login/google
 ```
 
 Once OAuth is confirmed working, uncomment `disable_login_form: true` in
@@ -77,7 +77,7 @@ flux/infrastructure/configs/monitoring/
 ├── externalsecret-grafana.yaml              # grafana-admin-secret ← GCP Secret Manager
 ├── externalsecret-telegram.yaml             # alertmanager-telegram-secret ← GCP Secret Manager
 ├── alertmanagerconfig.yaml                  # Telegram receiver (warning + critical)
-├── grafana-httproute.yaml                   # HTTPRoute: grafana.p2bid.global → Grafana svc
+├── grafana-httproute.yaml                   # HTTPRoute: grafana.test.global → Grafana svc
 └── kustomization.yaml
 ```
 
@@ -93,8 +93,8 @@ Alertmanager routes `warning` and `critical` alerts to a Telegram bot.
 2. Add the bot to your group/channel; get the chat ID via [@userinfobot](https://t.me/userinfobot)
 3. Update the token secret:
    ```bash
-   echo -n "123456:ABCdef..." | gcloud secrets versions add p2bid-staging-telegram-bot-token \
-     --project="p2bid-staging-xc69rp" --data-file=-
+   echo -n "123456:ABCdef..." | gcloud secrets versions add test-staging-telegram-bot-token \
+     --project="test-staging-xc69rp" --data-file=-
    ```
 4. Update `chatID` in [flux/infrastructure/configs/monitoring/alertmanagerconfig.yaml](../flux/infrastructure/configs/monitoring/alertmanagerconfig.yaml), commit, push
 

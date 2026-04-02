@@ -108,7 +108,7 @@ Encrypted in `Pulumi.staging.yaml` using `$PULUMI_CONFIG_PASSPHRASE`.
 
 | Config key | Contents | How to update |
 |------------|----------|---------------|
-| `p2bid-infra:git_ssh_key` | SSH private key for Flux to pull from GitHub | See [bootstrap Step 8](bootstrap.md#step-8--pulumi-setup) |
+| `test-infra:git_ssh_key` | SSH private key for Flux to pull from GitHub | See [bootstrap Step 8](bootstrap.md#step-8--pulumi-setup) |
 
 Passphrase is stored in GCP Secret Manager as `${CLUSTER_NAME}-pulumi-passphrase` and in GitHub Actions as `PULUMI_CONFIG_PASSPHRASE`.
 
@@ -144,6 +144,6 @@ Flux pulls from `ssh://git@github.com/$GITHUB_REPO.git` using an SSH key stored 
 |--------|-----------|------|
 | `flux-git-credentials` | `flux-system` | `identity` (private key), `known_hosts` |
 
-This secret is created by Pulumi from the `p2bid-infra:git_ssh_key` stack config. The corresponding **public key must be added as a Deploy Key** on the GitHub repo:
+This secret is created by Pulumi from the `test-infra:git_ssh_key` stack config. The corresponding **public key must be added as a Deploy Key** on the GitHub repo:
 
 `https://github.com/$GITHUB_REPO/settings/keys`

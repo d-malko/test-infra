@@ -1,13 +1,13 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: wildcard-p2bid-global-tls
+  name: wildcard-test-global-tls
   namespace: gateway
 spec:
-  secretName: wildcard-p2bid-global-tls
+  secretName: wildcard-test-global-tls
   issuerRef:
     name: letsencrypt-production
     kind: ClusterIssuer
     group: cert-manager.io
   dnsNames:
-    - "*.p2bid.global"
+    - "*.test.global"
